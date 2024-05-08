@@ -10,8 +10,8 @@ import time
 import datetime
 import matplotlib.pyplot as plt
 
-from .task_preprocessing import *
-from .utils import device
+from task_preprocessing import *
+from utils import device
 
 
 __all__ = ['HydroGenerator']

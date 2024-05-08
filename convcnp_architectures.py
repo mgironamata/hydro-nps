@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import pdb
 
-from    .utils import (
+from utils import (
     init_sequential_weights,
     to_multiple,
 )

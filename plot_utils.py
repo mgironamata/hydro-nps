@@ -4,7 +4,7 @@ import torch
 import scipy.stats
 import scipy.special
 from typing import Dict, Tuple
-from .utils import *
+from utils import *
 
 def plot_task(task, idx, legend):
     x_context, y_context = to_numpy(task['x_context'][idx]), to_numpy(task['y_context'][idx][:,0])

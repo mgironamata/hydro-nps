@@ -1,6 +1,6 @@
 import torch
 import numpy as np 
-from .utils import device
+from utils import device
 import pdb
 
 __all__ = ['task_mask',
