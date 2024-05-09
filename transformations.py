@@ -7,6 +7,28 @@ import torch
 
 " TRANSFORMATIONS"
 
+def scaling(fields, 
+            method='std'):
+    
+    for field in fields:
+
+        if field == 'OBS_RUN':
+            if method == 'std':
+                df[field], q_mu, q_sigma = standardise(df[field], stats=True)
+            elif method == 'norm':
+                df[field], q_min, q_max = normalise(df[field],stats=True)
+    
+        else:
+            if method == 'std':
+                df[field] = standardise(df[field], stats=False)
+            elif method == 'norm':
+                df[field] = normalise(df[field])
+
+    if method == 'std':
+        return df, q_mu, q_sigma
+    elif method == 'norm':
+        return df, q_min, q_max
+
 def rev_transform(x,q_mu, q_sigma, a=0,b=0):
     #return x
     return rev_standardise(x,q_mu,q_sigma)
