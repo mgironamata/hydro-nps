@@ -181,6 +181,7 @@ class HydroGenerator(DataGenerator):
             df = self.dataframe.iloc[s_ind:e_ind].copy()
             x_ind = _rand((s_ind, e_ind),num_points)
             
+            # Sort x_ind if extrapolate is True
             if self.extrapolate == True:
                 x_ind = sorted(x_ind)
 

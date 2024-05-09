@@ -7,6 +7,29 @@ import torch
 
 " TRANSFORMATIONS"
 
+def rev_transform(x,q_mu, q_sigma, a=0,b=0):
+    #return x
+    return rev_standardise(x,q_mu,q_sigma)
+    #return rev_log_transform(x-1,e=1)
+    #return rev_normalise(x-1,q_min,q_max)
+    #return rev_standardise(x-Q_shift,q_mu,q_sigma)
+    #return rev_log_transform(x,e=1)
+    #return rev_normalise(rev_log_transform(x-1,e=1), q_min, q_max)
+    #return rev_log_transform(x+Q_shift-1,e=1)
+    #return rev_boxcox_transform(x,ld=lambda_OBS_RUN)
+
+def rev_transform_tensor(x,q_mu, q_sigma, a=0,b=0):
+    #return x
+    return rev_standardise(x,q_mu,q_sigma)
+    #return torch.exp(x-1)-1
+    #return torch.exp(x)-1
+    #return rev_normalise(x-1,q_min,q_max)
+    #return rev_standardise(torch.exp(x)-Q_shift,q_mu,q_sigma)
+    #return rev_standardise(x-1,q_mu,q_sigma)
+    #return torch.exp(x+Q_shift-1)-1
+    #return rev_normalise(torch.exp(x-1)-1, q_min, q_max)
+    #return rev_boxcox_transform_tensor(x,ld=lambda_OBS_RUN)
+
 def standardise(x,stats=False):
     mu = np.mean(x)
     sigma = np.std(x)
