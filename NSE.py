@@ -5,7 +5,14 @@ def nse(obs, mean_obs, sim):
     return (1 - np.sum((sim - obs)**2)/np.sum((obs - mean_obs)**2))
 
 def nse_tensor(obs, mean_obs, sim):
-    return torch.mean(1 - torch.sum((obs - sim)**2,dim=1)/torch.sum((obs - mean_obs)**2,dim=1))
+    numerator = torch.sum((obs - sim)**2, dim=1)
+    denominator = torch.sum((obs - mean_obs)**2, dim=1)
+    # print(numerator, denominator, 1 - numerator/denominator)
+    # return 1 - numerator/denominator
+    nses = 1 - torch.sum((obs - sim)**2,dim=1)/torch.sum((obs - mean_obs)**2,dim=1)
+    nse = torch.mean(nses)
+    print(obs.shape, sim.shape, mean_obs.shape, numerator.shape, denominator.shape, nse.shape, nses.min().item(), nses.max().item(), nse.item())
+    return nse
 
 def nse_tensor_batch(obs, mean_obs, sim):
     return torch.mean(1 - torch.sum((obs - sim)**2,dim=0)/torch.sum((obs - mean_obs)**2,dim=0))

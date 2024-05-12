@@ -5,6 +5,8 @@ import scipy.stats
 import scipy.special
 from typing import Dict, Tuple
 from utils import *
+from transformations import rev_transform
+import NSE
 
 def plot_task(task, idx, legend):
     x_context, y_context = to_numpy(task['x_context'][idx]), to_numpy(task['y_context'][idx][:,0])
@@ -12,9 +14,10 @@ def plot_task(task, idx, legend):
     y_target_val = to_numpy(task['y_target_val'][idx][:,0])
       
     # Plot context and target sets.
-    plt.scatter(x_context, y_context, label='Context Set', color='yellow', marker='o')
-    plt.scatter(x_target, y_target, label = 'Target Set', color='blue', marker='x')
+    plt.scatter(x_context, y_context, label='Context Set', color='blue', marker='.')
+    plt.scatter(x_target, y_target, label = 'Target Set', color='lightblue', marker='.')
     plt.plot(x_target, y_target_val, label='Target Mean', color='green')
+    
     if legend:
         plt.legend()
 
@@ -59,7 +62,7 @@ def plot_model_task(model, task, timeslice, idx, legend, dist='gaussian', featur
         p05, p95 = y_mean + 2 * y_std, y_mean - 2 * y_std
         #y_mean_NSE, y_std_NSE = y_loc_NSE, y_scale_NSE
 
-    #nse = NSE.nse(rev_transform(y_target), rev_transform(y_target_val), rev_transform(y_mean_NSE))
+    nse = NSE.nse(rev_transform(y_target), rev_transform(y_target_val), rev_transform(y_mean_NSE))
     #log_nse = NSE.nse(y_mean_NSE, y_target_val, y_target)
     
     x_context = x_context*timeslice
@@ -78,7 +81,7 @@ def plot_model_task(model, task, timeslice, idx, legend, dist='gaussian', featur
                      rev_transform(p05),
                      color='tab:blue', alpha=0.2)
         
-    #plt.title("NSE(1): %.3f " % nse)
+    plt.title("NSE(1): %.3f " % nse)
     #plt.xlabel("Q")
     #plt.ylabel("y-label")
         

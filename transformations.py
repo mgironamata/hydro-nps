@@ -7,7 +7,8 @@ import torch
 
 " TRANSFORMATIONS"
 
-def scaling(fields, 
+def scaling(df,
+            fields, 
             method='std'):
     
     for field in fields:

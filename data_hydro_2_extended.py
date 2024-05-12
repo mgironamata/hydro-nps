@@ -81,6 +81,7 @@ class DataGenerator(metaclass=abc.ABCMeta):
                  min_test_points = 10,
                  max_train_points=15,
                  max_test_points=15):
+        
         self.batch_size = batch_size
         self.num_tasks = num_tasks
         self.x_range = x_range
@@ -146,7 +147,10 @@ class HydroGenerator(DataGenerator):
         DataGenerator.__init__(self,**kw_args)
     
     def sample(self,x,df):
-        return np.vstack(tuple(df[key][x] for key in self.channels_c)), np.vstack(tuple(df[key][x] for key in self.channels_t)), np.vstack(tuple(df[key][x] for key in self.channels_t_val)) 
+        o1 = np.vstack(tuple(df[key][x] for key in self.channels_c))
+        o2 = np.vstack(tuple(df[key][x] for key in self.channels_t))
+        o3 = np.vstack(tuple(df[key][x] for key in self.channels_t_val)) 
+        return o1, o2, o3
     
     def sample_att(self,hru08):
         return np.vstack(tuple(self.df_att[key][self.df_att['hru08']==hru08] for key in self.channels_att))
