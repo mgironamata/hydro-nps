@@ -17,6 +17,8 @@ from torch.utils.data import DataLoader
 # from data_loader_pytorch import HydroDataset
 from temp_file import HydroDataset
 
+from likelihoods import compute_logpdf
+
 import matplotlib
 matplotlib.use('Agg')  # Use a non-interactive backend
 import matplotlib.pyplot as plt
@@ -54,15 +56,7 @@ def train(data, model, opt, dist='gaussian'):
                             static_masking_rate=static_masking_rate, 
                             embedding=C.feature_embedding_flag)
         
-        if dist == 'gaussian':
-            y_mean, y_std = y_loc, y_scale
-            obj = -gaussian_logpdf(task['y_target'], y_loc, y_scale, 'batched_mean')
-        elif dist == 'gamma':
-            y_mean, y_std = gamma_stats(y_loc, y_scale)
-            obj = -gamma_logpdf(task['y_target'], y_loc, y_scale, 'batched_mean')
-        elif dist == 'gaussian_fixed':
-            y_mean, y_std = y_loc, y_scale
-            obj = -gaussian_logpdf(task['y_target'], y_loc, y_scale/y_scale, 'batched_mean')
+        obj, y_mean, y_sigma = compute_logpdf(y_loc, y_scale, task, dist=dist, return_mu_and_sigma=True)
         
         obj.backward()
         opt.step()
@@ -100,15 +94,8 @@ def test(gen_test,model,dist='gaussian',fig_flag=False):
                                 task['feature'], task['m'], 
                                 static_masking_rate = static_masking_rate,
                                 embedding=C.feature_embedding_flag)        
-            if dist == 'gaussian':
-                y_mean, y_std = y_loc, y_scale
-                obj = -gaussian_logpdf(task['y_target'], y_loc, y_scale, 'batched_mean')
-            elif dist == 'gamma':
-                y_mean, y_std = gamma_stats(y_loc, y_scale)
-                obj = -gamma_logpdf(task['y_target'], y_loc, y_scale, 'batched_mean')
-            if dist == 'gaussian_fixed':
-                y_mean, y_std = y_loc, y_scale
-                obj = -gaussian_logpdf(task['y_target'], y_loc, y_scale/y_scale, 'batched_mean')
+            
+            obj, y_mean, y_sigma = compute_logpdf(y_loc, y_scale, task, dist=dist, return_mu_and_sigma=True)
             
             batch_size = get_batch_size(gen_test)
             
@@ -117,7 +104,6 @@ def test(gen_test,model,dist='gaussian',fig_flag=False):
                                     sim=rev_transform_tensor(y_mean,mu=q_mu,sigma=q_sigma, scaling='STANRDARD'))       
             
             ravg.update(obj.item(), batch_size)
-            #print(batch_size)
             ravg_nse.update(obj_nse.item(), batch_size)
 
     if fig_flag:

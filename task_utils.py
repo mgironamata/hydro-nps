@@ -1,12 +1,13 @@
-
-
 def task_to_device(task,device='cuda'):
     for k in task.keys():
         task[k] = task[k].to(device)
     return task
 
 def loaded_task(task, device='cuda'):
-    # This function is used to reshape the task to the right shape, and to load it onto the right device. 
+    """Reshapes task to the right shape, and loads it onto the right device.
+    
+    """
+
     if len(task['x'].shape)==4:
         for k in task.keys():
             if task[k].device==device:

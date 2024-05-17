@@ -1,8 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.distributions.normal import Normal
-from torch.distributions.gamma import Gamma
 import pdb
 
 __all__ = ['device',
@@ -13,9 +11,7 @@ __all__ = ['device',
            'init_sequential_weights',
            'compute_dists',
            'pad_concat',
-           'gaussian_logpdf',
-           'gamma_logpdf',
-           'gamma_stats']
+           ]
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 """Device perform computations on."""
@@ -153,61 +149,3 @@ def pad_concat(t1, t2):
 
     return torch.cat([t1, t2], dim=1)
 
-
-def gaussian_logpdf(inputs, mean, sigma, reduction=None):
-    """Gaussian log-density.
-
-    Args:
-        inputs (tensor): Inputs.
-        mean (tensor): Mean.
-        sigma (tensor): Standard deviation.
-        reduction (str, optional): Reduction. Defaults to no reduction.
-            Possible values are "sum", "mean", and "batched_mean".
-
-    Returns:
-        tensor: Log-density.
-    """
-    dist = Normal(loc=mean, scale=sigma)
-    logp = dist.log_prob(inputs)
-    if not reduction:
-        return logp
-    elif reduction == 'sum':
-        return torch.sum(logp)
-    elif reduction == 'mean':
-        return torch.mean(logp)
-    elif reduction == 'batched_mean':
-        return torch.mean(torch.sum(logp, 1))
-    else:
-        raise RuntimeError(f'Unknown reduction "{reduction}".')
-
-def gamma_logpdf(inputs, loc, scale, reduction=None):
-    """Gamma log-density.
-
-    Args:
-        inputs (tensor): Inputs.
-        mean (tensor): Mean.
-        sigma (tensor): Standard deviation.
-        reduction (str, optional): Reduction. Defaults to no reduction.
-            Possible values are "sum", "mean", and "batched_mean".
-
-    Returns:
-        tensor: Log-density.
-    """
-    dist = Gamma(concentration=loc, rate=scale)
-    logp = dist.log_prob(inputs)
-
-    if not reduction:
-        return logp
-    elif reduction == 'sum':
-        return torch.sum(logp)
-    elif reduction == 'mean':
-        return torch.mean(logp)
-    elif reduction == 'batched_mean':
-        return torch.mean(torch.sum(logp, 1))
-    else:
-        raise RuntimeError(f'Unknown reduction "{reduction}".')
-
-def gamma_stats(loc, scale):
-    g_mean = torch.distributions.gamma.Gamma(loc, scale).mean
-    g_std = torch.sqrt(torch.distributions.gamma.Gamma(loc, scale).variance)
-    return g_mean, g_std
