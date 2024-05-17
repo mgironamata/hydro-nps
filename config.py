@@ -114,14 +114,14 @@ list_to_drop = ['MNTH','DY','hru02','hru04','RAIM','TAIR','PET','ET','SWE','swe(
 observed_at_target_flag = True
 feature_embedding_flag = True
 feature_embedding_key_flag = True
-extrapolate_flag = False
+extrapolate_flag = True
 
-timeslice = 200
+timeslice = 365*2
 
-min_train_points = 100
-max_train_points = 120
-min_test_points = 40
-max_test_points = 60
+min_train_points = 270
+max_train_points = 360
+min_test_points = 360
+max_test_points = 364
 
 dynamic_embedding_dims = 10
 static_embedding_dims = 5

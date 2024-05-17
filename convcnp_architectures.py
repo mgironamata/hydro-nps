@@ -480,6 +480,10 @@ class ConvCNP(nn.Module):
             mean = self.mean_layer(x_grid, h, x_out)
             sigma = self.sigma_fn(self.sigma_layer(x_grid, h, x_out))
 
+        elif self.distribution == 'gaussian_fixed':
+            mean = self.mean_layer(x_grid, h, x_out)
+            sigma = self.sigma_fn(self.sigma_layer(x_grid, h, x_out))
+
         elif self.distribution == 'gamma':
             mean = self.sigma_fn(self.mean_layer(x_grid, h, x_out))+1e-8
             sigma = self.sigma_fn(self.sigma_layer(x_grid, h, x_out))+1e-8
