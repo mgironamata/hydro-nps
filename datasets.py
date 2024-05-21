@@ -255,6 +255,10 @@ class HydroTestDataset(Dataset):
         self.max_train_points = max_train_points
         self.max_test_points = max_test_points
 
+    def _get_basin_years(self):
+        grouped = self.dataframe.groupby(['hru08','YR'])
+        return grouped.groups.keys()
+
     def __len__(self):
         return 1000
     
