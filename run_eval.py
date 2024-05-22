@@ -3,7 +3,8 @@ import config as C
 from convcnp_architectures import ConvCNP
 from architectures import UNet
 import os
-from temp_file import HydroDataset
+from datasets import HydroDataset, HydroTestDataset
+from likelihoods import compute_logpdf
 from run_training import unpickle_object
 
 
@@ -40,8 +41,7 @@ if __name__ == "__main__":
     # Assign model to device
     model.to(device)
 
-
-    ROOT_PATH = r'_experiments\2024-05-17_09-24-33_test-gaussianfixed-365'
+    ROOT_PATH = r'_experiments\2024-05-21_16-29-19_test-noembeddings'
     model.load_state_dict(torch.load(os.path.join(ROOT_PATH, 'model_best.pth.tar')))
 
     print(model.num_params)
@@ -68,3 +68,106 @@ if __name__ == "__main__":
                                                 max_test_points = C.max_test_points,
                                                 device = 'cpu'
                                                 )
+    
+
+    # Instantiate data generator for testing.
+NUM_TEST_TASKS = 10
+gen_365 = data_hydro_2_extended.HydroGenerator(
+                                            dataframe=df_test,
+                                            df_att = df_att,
+                                            batch_size = 16,
+                                            num_tasks = NUM_TEST_TASKS,
+                                            channels_c = C.context_channels,
+                                            channels_t = C.target_channels,
+                                            channels_att = C.attributes,
+                                            channels_t_val = C.target_val_channel,
+                                            context_mask = C.context_mask,
+                                            target_mask = C.target_mask,
+                                            concat_static_features = C.concat_static_features,
+                                            extrapolate = True,
+                                            timeslice = 90,
+                                            min_train_points=89,
+                                            min_test_points=1,
+                                            max_train_points=89,
+                                            max_test_points=1,
+                                            device='cpu')
+
+out = np.array([])
+out_2 = np.array([])
+
+# Compute average task log-likelihood.
+# basins = df_test['hru08'].unique().tolist()
+# print(len(basins))
+# b=0
+for basin in basins[:]:
+
+    b+=1
+    
+    obs_basin = np.array([])
+    mean_obs_basin = np.array([])
+    sim_basin = np.array([])
+
+    with torch.no_grad():    
+        years = df_test['YR'][df_test['hru08']==basin].unique().tolist()
+        years = sorted(years)[1:]
+        
+        for year in years:
+
+            if year != 2000:
+                continue
+
+            start = time.time()
+            
+            task = gen_365.generate_test_task(year=year, basin=basin)
+
+            # elapsed = time.time() - start
+            # print(f'Generator: {elapsed}')
+            # start = time.time()
+
+            task = loaded_task(task=task, device='cuda')
+
+            y_mean, y_std = model(task['x_context'], task['y_context'], 
+                                      task['x_target'],task['y_att'], 
+                                      task['feature'],task['m'],
+                                      static_masking_rate=0,
+                                      embedding=C.feature_embedding_flag)
+            
+            obj, y_mean, y_sigma = compute_logpdf(y_loc, y_scale, task, dist=dist, return_mu_and_sigma=True)
+            
+            #y_mu, y_sigma = rev_lognormal(to_numpy(y_mean), to_numpy(y_std))
+            
+            if dist == 'gamma':
+                y_loc = y_mean
+                y_scale = y_std
+                g_mean = torch.distributions.gamma.Gamma(y_mean, y_std).mean
+                g_var = torch.distributions.gamma.Gamma(y_mean, y_std).variance
+                y_mean = g_mean
+                y_std = torch.sqrt(g_var)
+
+            obs = rev_transform(task['y_target'].flatten().cpu().numpy(), mu=q_mu, sigma=q_sigma)
+            mean_obs = rev_transform(task['y_target_val'].flatten().cpu().numpy(), mu=q_mu, sigma=q_sigma)
+            sim = rev_transform(y_mean.flatten().cpu().numpy(), mu=q_mu, sigma=q_sigma)
+
+            obs_basin = np.concatenate((obs_basin,obs),axis=0)
+            mean_obs_basin = np.concatenate((mean_obs_basin, mean_obs),axis=0)
+            sim_basin = np.concatenate((sim_basin, sim), axis=0)
+
+            # elapsed = time.time() - start
+            # print(f'Model: {elapsed}')
+
+            # print(year,basin)
+
+            # plt.figure(figsize=(20,5))
+            # plt.plot(obs,label='obs')
+            # plt.plot(sim, label='sim')
+            # plt.legend()
+            # plt.show()
+
+    try:
+        nse = NSE.nse(obs=obs_basin
+                ,mean_obs=mean_obs_basin
+                ,sim=sim_basin)
+        print(basin, nse)
+    except:
+        print(basin, "NSE can't be calculated")
+        

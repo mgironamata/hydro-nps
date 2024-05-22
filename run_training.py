@@ -3,9 +3,8 @@ from architectures import SimpleConv, UNet, DepthSepConv1d
 from convcnp_architectures import ConvCNP
 import pickle
 import torch
-import data_hydro_2_extended
+# import data_hydro_2_extended
 from experiment import WorkingDirectory, generate_root, save_checkpoint, RunningAverage
-from utils import gaussian_logpdf, gamma_logpdf, gamma_stats
 from transformations import rev_transform, rev_transform_tensor, rev_standardise
 import NSE
 from plot_utils import plot_training_loss, plot_model_task
@@ -15,7 +14,7 @@ from IPython import display
 import os
 from torch.utils.data import DataLoader
 # from data_loader_pytorch import HydroDataset
-from temp_file import HydroDataset
+from datasets import HydroDataset
 
 from likelihoods import compute_logpdf
 
@@ -51,10 +50,14 @@ def train(data, model, opt, dist='gaussian'):
         
         task = loaded_task(task)
         
-        y_loc, y_scale = model(task['x_context'], task['y_context'], task['x_target'], task['y_att'], 
-                            task['feature'], task['m'], 
-                            static_masking_rate=static_masking_rate, 
-                            embedding=C.feature_embedding_flag)
+        y_loc, y_scale = model(x = task['x_context'],
+                               y = task['y_context'], 
+                               x_out = task['x_target'], 
+                               y_att = task['y_att'], 
+                               # f = task['feature'], 
+                               # m = task['m'], 
+                               static_masking_rate=static_masking_rate, 
+                            )
         
         obj, y_mean, y_sigma = compute_logpdf(y_loc, y_scale, task, dist=dist, return_mu_and_sigma=True)
         
@@ -90,10 +93,15 @@ def test(gen_test,model,dist='gaussian',fig_flag=False):
         for _, task in enumerate(gen_test):
             # torch.cuda.empty_cache()
             task = loaded_task(task)
-            y_loc, y_scale = model(task['x_context'], task['y_context'], task['x_target'], task['y_att'], 
-                                task['feature'], task['m'], 
-                                static_masking_rate = static_masking_rate,
-                                embedding=C.feature_embedding_flag)        
+            
+            y_loc, y_scale = model(x = task['x_context'],
+                                   y = task['y_context'], 
+                                   x_out = task['x_target'], 
+                                   y_att = task['y_att'], 
+                                   #f = task['feature'], 
+                                   #m = task['m'], 
+                                   static_masking_rate = static_masking_rate,
+                                   )        
             
             obj, y_mean, y_sigma = compute_logpdf(y_loc, y_scale, task, dist=dist, return_mu_and_sigma=True)
             
@@ -122,7 +130,8 @@ if __name__ == "__main__":
 
     q_mu = unpickle_object('pickled/q_mu.pkl')
     q_sigma = unpickle_object('pickled/q_sigma.pkl')
-    dist = unpickle_object('pickled/dist.pkl')\
+    # dist = unpickle_object('pickled/dist.pkl')\
+    dist = "gaussian"
     
     df_train = unpickle_object('pickled/train.pkl')
     df_test_both = unpickle_object('pickled/test_both.pkl')
@@ -131,11 +140,12 @@ if __name__ == "__main__":
     df_att = unpickle_object('pickled/df_att.pkl')
 
     # Instantiate ConvCNP
-    model = ConvCNP(in_channels = len(C.context_channels),
+    model = ConvCNP(in_channels = len(C.context_channels)-1,
                     #rho=SimpleConv(),
                     rho=UNet(),
                     #rho=DepthSepConv1d(in_channels=rho_in_channels, conv_channels=64, num_layers=7, kernel_size=15),
                     points_per_unit=64*8,
+                    dynamic_feature_embedding=False,
                     dynamic_embedding_dims=C.dynamic_embedding_dims,
                     static_embedding_dims=C.static_embedding_dims,
                     static_feature_embedding=C.static_feature_embedding,
@@ -169,8 +179,6 @@ if __name__ == "__main__":
                                                 max_test_points= C.max_test_points,
                                                 device='cpu',
                                                 )
-
-    
 
     # Create a fixed set of outputs to predict at when plotting.
     x_test = torch.linspace(0., 1.,C.timeslice)[None, :, None].to(device)
@@ -226,7 +234,7 @@ if __name__ == "__main__":
     change_folder = True
 
     if change_folder:
-        experiment_name = 'test_singlethread'
+        experiment_name = 'test_NoEmbeddings'
         wd = WorkingDirectory(generate_root(experiment_name))
 
     # Reset epochs
@@ -248,9 +256,11 @@ if __name__ == "__main__":
     gen_test.dropout_rate = 0
     static_masking_rate = 0
 
-    train_dataloader = DataLoader(dataset=gen, batch_size=1, num_workers=6)
-    test_dataloader = DataLoader(dataset=gen_test, batch_size=1, num_workers=6)
-    val_dataloader = DataLoader(dataset=gen_val, batch_size=1, num_workers=6)
+    num_workers = 6
+
+    train_dataloader = DataLoader(dataset=gen, batch_size=1, num_workers=num_workers)
+    test_dataloader = DataLoader(dataset=gen_test, batch_size=1, num_workers=num_workers)
+    val_dataloader = DataLoader(dataset=gen_val, batch_size=1, num_workers=num_workers)
 
     # torch.autograd.set_detect_anomaly(False)
 

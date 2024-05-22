@@ -350,7 +350,7 @@ class ConvCNP(nn.Module):
                 in_channels, 
                 rho, 
                 points_per_unit, 
-                dynamic_feature_embedding=True,
+                dynamic_feature_embedding=False,
                 static_feature_embedding=True,
                 dynamic_embedding_dims=5,
                 static_embedding_dims=5,
@@ -422,7 +422,7 @@ class ConvCNP(nn.Module):
         self.sigma_layer = FinalLayer(in_channels=final_layer_in_channels,
                                       init_length_scale=init_length_scale)
 
-    def forward(self, x, y, x_out, y_att=None, f=None, m=None, embedding=False, f_s=None, m_s=None, static_masking_rate=0):
+    def forward(self, x, y, x_out, y_att=None, f=None, m=None, static_masking_rate=0):
         """Run the model forward.
 
         Args:

@@ -201,7 +201,7 @@ class HydroDataset(Dataset):
                             context_mask=self.context_mask,
                             target_mask=self.target_mask,
                             dropout_rate=self.dropout_rate,
-                            embedding=True,
+                            embedding=False,
                             concat_static_features=self.concat_static_features,
                             observe_at_target=True,
                             device=self.device)
@@ -255,12 +255,14 @@ class HydroTestDataset(Dataset):
         self.max_train_points = max_train_points
         self.max_test_points = max_test_points
 
+        self.year_basin_pairs = list(self._get_basin_years())
+
     def _get_basin_years(self):
         grouped = self.dataframe.groupby(['hru08','YR'])
         return grouped.groups.keys()
 
     def __len__(self):
-        return 1000
+        return len(self.year_basin_pairs)
     
     def sample(self,x,df):
         o1 = np.vstack(tuple(df[key][x] for key in self.channels_c))
@@ -274,7 +276,11 @@ class HydroTestDataset(Dataset):
     def sample_date(self,x,df):
         return np.vstack(tuple(df[key][x] for key in ['YR','DOY']))
 
-    def __getitem__(self,index=0):
+    def __getitem__(self,idx=0):
+
+        if idx >= len(self):
+            raise IndexError("Index out of range") 
+
         task = {'x': [],
                 'y': [],
                 'x_context': [],
@@ -283,38 +289,57 @@ class HydroTestDataset(Dataset):
                 'y_target': [],
                 'y_target_val': [],
                 'y_att': [],
+                'yr_context': [],
+                'yr_target': [],
+                'doy_context': [],
+                'doy_target': [],
+                'basin': [],
                 }
         
         # Determine number of test and train points.
         num_train_points = np.random.randint(self.min_train_points, self.max_train_points + 1)
         num_test_points = np.random.randint(self.min_test_points, self.max_test_points + 1)
         num_points = num_train_points + num_test_points
+
+        basin, year = self.year_basin_pairs[idx]
         
-        # Generate a random integer for each element in the bacth 
-        randoms = np.random.randint(0,len(self.dataframe)-self.timeslice,self.batch_size)
-        ids, year, hru08 = np.stack(self.dataframe[['id','YR','hru08']].iloc[randoms].values,axis=1).tolist()
+        s_ind, e_ind = self.dataframe.index[(self.dataframe['hru08']==basin)&(self.dataframe['YR']==year)][[0,-1]]
+        s_ind_b, e_ind_b = self.dataframe.index[self.dataframe['hru08']==basin][[0, -1]]
+        
+        if s_ind - s_ind_b > self.timeslice:
+            s_ind = s_ind - self.timeslice
+        elif s_ind - s_ind_b < self.timeslice:
+            s_ind = s_ind_b
+            
+        df = self.dataframe[s_ind:e_ind]
+
+        #ids = self.dataframe['id'][(self.dataframe['hru08']==basin)&(self.dataframe['YR']==year)].unique()[0]
+        ##df = self.dataframe[(self.dataframe['hru08']==basin)&(self.dataframe['YR']==year)]
+        #df = self.dataframe[(self.dataframe['id']==ids) | (self.dataframe['id_lag']==ids)]
+        self.batch_size = len(df) - self.timeslice
+        hru08 = df['hru08'].unique()[0]
 
         for i in range(self.batch_size):
         # Sample inputs and outputs.
-            #x = _rand(self.x_range, num_points)
-            s_ind, e_ind = randoms[i], randoms[i] + self.timeslice
-            df = self.dataframe.iloc[s_ind:e_ind].copy()
-            x_ind = _rand((s_ind, e_ind),num_points)
-            
-            # Sort x_ind if extrapolate is True
-            if self.extrapolate == True:
-                x_ind = sorted(x_ind)
+            df_s = df.copy()
+            df_s.drop_duplicates(inplace=True)
+            df_s = df_s.reset_index(drop=True)
+            s_ind = i
+            e_ind = self.timeslice + i
 
-            y, y_t, y_t_val = self.sample(x_ind,df)
-            y_att = self.sample_att(hru08[i])
+            x_ind = np.arange(s_ind, e_ind)
+
+            y, y_t, y_t_val = self.sample(x_ind,df_s)
+            y_att = self.sample_att(hru08)
+            x_date = self.sample_date(x_ind,df_s)
 
             x = np.divide(np.array(x_ind) - s_ind, e_ind - s_ind)
 
             # Determine indices for train and test set.
-            if self.extrapolate:
+            if self.extrapolate == False:
+                inds = np.random.permutation(len(x))
+            elif self.extrapolate == True:
                 inds = np.arange(len(x))
-            else:
-                inds = np.random.permutation(len(x))                
             
             inds_train = sorted(inds[:num_train_points])
             inds_test = sorted(inds[num_train_points:num_points])
@@ -323,6 +348,11 @@ class HydroTestDataset(Dataset):
             task['x'].append(sorted(x))
             task['x_context'].append(x[inds_train])
             task['x_target'].append(x[inds_test])
+            
+            task['doy_context'].append(x_date[1][inds_train])
+            task['yr_context'].append(x_date[0][inds_train])
+            task['doy_target'].append(x_date[1][inds_test])
+            task['yr_target'].append(x_date[0][inds_test])
 
             task['y_att'].append(y_att)
 
@@ -343,7 +373,7 @@ class HydroTestDataset(Dataset):
             #task['y_context'].append(y[0][inds_train])
             #task['y_target'].append(y[0][inds_test])
             task['y_target_val'].append(y_t_val[0][inds_test])
-
+        
         # Stack batch and convert to PyTorch.
         task = {k: torch.tensor(_uprank(np.stack(v, axis=0)),
                                 dtype=torch.float32).to(self.device)
@@ -358,13 +388,13 @@ class HydroTestDataset(Dataset):
             task['y_target'] = torch.cat([task['y_target'],task['y_att_target']],dim=2)
 
         task = prep_task(task,
-                            context_mask=self.context_mask,
-                            target_mask=self.target_mask,
-                            dropout_rate=self.dropout_rate,
-                            embedding=True,
-                            concat_static_features=self.concat_static_features,
-                            observe_at_target=True,
-                            device=self.device)
+                         context_mask=self.context_mask,
+                         target_mask=self.target_mask,
+                         dropout_rate=self.dropout_rate,
+                         embedding=False,
+                         concat_static_features=self.concat_static_features,
+                         observe_at_target=True,
+                         device=self.device)
 
         return task
 
@@ -379,7 +409,7 @@ if __name__ == "__main__":
     df = pd.read_pickle('pickled/train.pkl')
     df_att = pd.read_pickle('pickled/df_att.pkl')
 
-    dataset = HydroDataset(dataframe=df,
+    dataset = HydroTestDataset(dataframe=df,
                            df_att=df_att,
                             channels_c = C.context_channels,
                             channels_t = C.target_channels,
@@ -396,23 +426,13 @@ if __name__ == "__main__":
                             max_train_points= C.max_train_points,
                             max_test_points= C.max_test_points,)
     
-    dataloader = DataLoader(dataset, batch_size=1, num_workers=10)
+    dataloader = DataLoader(dataset, batch_size=1, num_workers=0)
 
     start = time.time()
     for idx, batch in enumerate(dataloader):
-        print(batch['x'].shape)
+        print(batch['y_target'].shape)
         elapsed = time.time() - start
-        if idx == 500:
+        if idx == 5:
             break
         
-    print(f"Elapsed time: {elapsed:.2f} s")
-
-    dataloader = DataLoader(dataset, batch_size=1, num_workers=9)
-
-    start = time.time()
-    for idx, batch in enumerate(dataloader):
-        print(batch['x'].shape)
-        elapsed = time.time() - start
-        if idx == 500:
-            break
     print(f"Elapsed time: {elapsed:.2f} s")
