@@ -70,30 +70,7 @@ if __name__ == "__main__":
                                                 )
     
 
-    # Instantiate data generator for testing.
-NUM_TEST_TASKS = 10
-gen_365 = data_hydro_2_extended.HydroGenerator(
-                                            dataframe=df_test,
-                                            df_att = df_att,
-                                            batch_size = 16,
-                                            num_tasks = NUM_TEST_TASKS,
-                                            channels_c = C.context_channels,
-                                            channels_t = C.target_channels,
-                                            channels_att = C.attributes,
-                                            channels_t_val = C.target_val_channel,
-                                            context_mask = C.context_mask,
-                                            target_mask = C.target_mask,
-                                            concat_static_features = C.concat_static_features,
-                                            extrapolate = True,
-                                            timeslice = 90,
-                                            min_train_points=89,
-                                            min_test_points=1,
-                                            max_train_points=89,
-                                            max_test_points=1,
-                                            device='cpu')
-
-out = np.array([])
-out_2 = np.array([])
+    
 
 # Compute average task log-likelihood.
 # basins = df_test['hru08'].unique().tolist()
