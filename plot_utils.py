@@ -21,7 +21,7 @@ def plot_task(task, idx, legend):
     if legend:
         plt.legend()
 
-def plot_model_task(model, task, timeslice, idx, legend, dist='gaussian', feature_embedding_flag=True):
+def plot_model_task(model, task, timeslice, idx, legend, dist='gaussian'):
     num_functions = task['x_context'].shape[0]
     x_test = torch.linspace(0., 1.,timeslice)[None, :, None].to(device)
     
@@ -32,9 +32,9 @@ def plot_model_task(model, task, timeslice, idx, legend, dist='gaussian', featur
                                task['y_context'], 
                                x_test.repeat(num_functions, 1, 1), 
                                task['y_att'], 
-                               task['feature'],
-                               task['m'],
-                               embedding=feature_embedding_flag)
+                               #task['feature'],
+                               #task['m'],
+                               )
         
         #y_loc_NSE, y_scale_NSE = model(task['x_context'], task['y_context'], task['x_target'], task['y_att'], task['feature'], task['m'], embedding=feature_embedding_flag)
 
