@@ -12,7 +12,6 @@ import NSE
 from task_utils import loaded_task
 from plot_utils import plot_model_task
 
-
 if __name__ == "__main__":
 
     q_mu = unpickle_object('pickled/q_mu.pkl')
@@ -29,18 +28,18 @@ if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # Instantiate ConvCNP
-    model = ConvCNP(in_channels = len(C.context_channels),
+    model = ConvCNP(in_channels = len(C.context_channels)-1,
                     #rho=SimpleConv(),
                     rho=UNet(),
                     #rho=DepthSepConv1d(in_channels=rho_in_channels, conv_channels=64, num_layers=7, kernel_size=15),
                     points_per_unit=64*8,
-                    dynamic_embedding_dims=C.dynamic_embedding_dims,
+                    dynamic_feature_embedding=False,
                     static_embedding_dims=C.static_embedding_dims,
                     static_feature_embedding=C.static_feature_embedding,
                     static_embedding_in_channels=C.static_embedding_in_channels,
                     static_feature_missing_data=C.static_feature_missing_data,
                     static_embedding_location=C.static_embedding_location,
-                    distribution=dist)
+                    distribution=dist)    
 
     # Assign model to device
     model.to(device)
@@ -52,7 +51,7 @@ if __name__ == "__main__":
 
     # Instantiate data generator for testing.
     NUM_TEST_TASKS = 16 # 128
-    gen_test = HydroDataset(
+    gen_test = HydroTestDataset(
                             dataframe=df_test_both,
                             df_att = df_att,
                             batch_size = 32,
@@ -76,6 +75,8 @@ if __name__ == "__main__":
     dataloader = torch.utils.data.DataLoader(gen_test, batch_size=1, shuffle=False, num_workers=0)
 
     for idx, task in enumerate(dataloader):
+
+        task = loaded_task(task=task)
 
         plot_model_task(model, task, C.timeslice, idx, legend=True, dist=dist)
         

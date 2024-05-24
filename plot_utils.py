@@ -8,6 +8,7 @@ from utils import *
 from transformations import rev_transform
 import NSE
 
+
 def plot_task(task, idx, legend):
     x_context, y_context = to_numpy(task['x_context'][idx]), to_numpy(task['y_context'][idx][:,0])
     x_target, y_target = to_numpy(task['x_target'][idx]), to_numpy(task['y_target'][idx][:,0])
@@ -21,7 +22,7 @@ def plot_task(task, idx, legend):
     if legend:
         plt.legend()
 
-def plot_model_task(model, task, timeslice, idx, legend, dist='gaussian'):
+def plot_model_task(model, task, timeslice, idx, legend, dist='gaussian', q_mu = None, q_sigma = None):
     num_functions = task['x_context'].shape[0]
     x_test = torch.linspace(0., 1.,timeslice)[None, :, None].to(device)
     
@@ -30,7 +31,8 @@ def plot_model_task(model, task, timeslice, idx, legend, dist='gaussian'):
     with torch.no_grad():
         y_loc, y_scale = model(task['x_context'], 
                                task['y_context'], 
-                               x_test.repeat(num_functions, 1, 1), 
+                               task['x_target'],
+                               #x_test.repeat(num_functions, 1, 1), 
                                task['y_att'], 
                                #task['feature'],
                                #task['m'],
@@ -62,23 +64,34 @@ def plot_model_task(model, task, timeslice, idx, legend, dist='gaussian'):
         p05, p95 = y_mean + 2 * y_std, y_mean - 2 * y_std
         #y_mean_NSE, y_std_NSE = y_loc_NSE, y_scale_NSE
 
-    nse = NSE.nse(rev_transform(y_target), rev_transform(y_target_val), rev_transform(y_mean_NSE))
+    nse = NSE.nse(rev_transform(y_target, mu=q_mu, sigma=q_sigma, scaling='STANDARD'), 
+                  rev_transform(y_target_val, mu=q_mu, sigma=q_sigma, scaling='STANDARD'),
+                  rev_transform(y_mean, mu=q_mu, sigma=q_sigma, scaling='STANDARD')
+                  )
+    
     #log_nse = NSE.nse(y_mean_NSE, y_target_val, y_target)
     
     x_context = x_context*timeslice
     x_target = x_target*timeslice
-    x_test = to_numpy(x_test[0,:,0])*timeslice
+    x_test = x_target #to_numpy(x_test[0,:,0])*timeslice
+
+    plt.figure(figsize=(10, 3))
     
-    plt.scatter(x_context, rev_transform(y_context), label='Context Set', color='black')
-    plt.scatter(x_target, rev_transform(y_target), label='Target Set', color='red')
-    #plt.scatter(x_target, rev_transform(y_mean_NSE), label='Target Predictions', color='orange')
-    plt.plot(x_target, rev_transform(y_target_val), label='Target Mean', color='green')
+    # plt.scatter(x_context, rev_transform(y_context), label='Context Set', color='black')
+    plt.scatter(x_target, rev_transform(y_target, mu=q_mu, sigma=q_sigma, scaling='STANDARD'), 
+                label='Target Set', color='red', marker='.')
+    
+    # plt.scatter(x_target, rev_transform(y_mean_NSE), label='Target Predictions', color='orange')
+    plt.scatter(x_target, rev_transform(y_target_val, mu=q_mu, sigma=q_sigma, scaling='STANDARD'), 
+                label='Target Mean', color='green', marker='.')
 
     # Plot model predictions.
-    plt.plot(x_test, rev_transform(y_mean), label='Model Output', color='blue')
+    plt.plot(x_test, rev_transform(y_mean, mu=q_mu, sigma=q_sigma, scaling='STANDARD'), 
+             label='Model Output', color='blue')
+    
     plt.fill_between(x_test,
-                     rev_transform(p95),
-                     rev_transform(p05),
+                     rev_transform(p95, mu=q_mu, sigma=q_sigma, scaling='STANDARD'),
+                     rev_transform(p05, mu=q_mu, sigma=q_sigma, scaling='STANDARD'),
                      color='tab:blue', alpha=0.2)
         
     plt.title("NSE(1): %.3f " % nse)
@@ -87,6 +100,11 @@ def plot_model_task(model, task, timeslice, idx, legend, dist='gaussian'):
         
     if legend:
         plt.legend()
+    plt.show()
+
+    # plt.savefig('task.png')
+
+    return nse
 
 def plot_training_loss(train_loss, test_loss):
     

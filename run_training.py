@@ -23,6 +23,8 @@ matplotlib.use('Agg')  # Use a non-interactive backend
 import matplotlib.pyplot as plt
 plt.ioff()  # Disable interactive mode
 
+import wandb
+
 
 torch.backends.cudnn.benchmark = False
 
@@ -39,7 +41,7 @@ def unpickle_object(file_path):
         obj = pickle.load(file)
     return obj
 
-def train(data, model, opt, dist='gaussian'):
+def train(data, model, opt, q_mu, q_sigma, dist='gaussian', static_masking_rate=0.0):
     
     ravg = RunningAverage()
     ravg_nse = RunningAverage() 
@@ -65,23 +67,24 @@ def train(data, model, opt, dist='gaussian'):
         opt.step()
         opt.zero_grad()
             
-        obj_nse = NSE.nse_tensor(obs = rev_transform_tensor(task['y_target']),
-                                mean_obs = rev_transform_tensor(task['y_target_val']),
-                                sim = rev_transform_tensor(y_mean))
-        
+        obj_nse = NSE.nse_tensor(obs = rev_transform_tensor(task['y_target'], scaling='STANDARD', mu=q_mu, sigma=q_sigma),
+                                 mean_obs = rev_transform_tensor(task['y_target_val'], scaling='STANDARD', mu=q_mu, sigma=q_sigma),
+                                 sim = rev_transform_tensor(y_mean, scaling='STANDARD', mu=q_mu, sigma=q_sigma) 
+                                )
+
         task_obj_list.append(obj.item())
         ravg.update(obj.item(), data.batch_size)
         ravg_nse.update(obj_nse.item(), data.batch_size)
         
-        if step % 25 == 0:
-            print("step %s -- avg training loss is %.3f" % (step, ravg.avg)) 
+        # if step % 250 == 0:
+        #     print("step %s -- avg training loss is %.3f" % (step, ravg.avg)) 
             
     plt.plot(task_obj_list)
     plt.show
         
     return ravg.avg, ravg_nse.avg
 
-def test(gen_test,model,dist='gaussian',fig_flag=False):
+def test(data, model, dist='gaussian', fig_flag=False):
     # Compute average task log-likelihood.
     ravg = RunningAverage()
     ravg_nse = RunningAverage()
@@ -90,10 +93,10 @@ def test(gen_test,model,dist='gaussian',fig_flag=False):
     start = time.time()
     
     with torch.no_grad():
-        for _, task in enumerate(gen_test):
-            # torch.cuda.empty_cache()
-            task = loaded_task(task)
+        for _, task in enumerate(data):
             
+            task = loaded_task(task)
+
             y_loc, y_scale = model(x = task['x_context'],
                                    y = task['y_context'], 
                                    x_out = task['x_target'], 
@@ -107,9 +110,9 @@ def test(gen_test,model,dist='gaussian',fig_flag=False):
             
             batch_size = get_batch_size(gen_test)
             
-            obj_nse = NSE.nse_tensor(obs=rev_transform_tensor(task['y_target'],mu=q_mu,sigma=q_sigma, scaling='STANRDARD'),
-                                    mean_obs=rev_transform_tensor(task['y_target_val'],mu=q_mu,sigma=q_sigma, scaling='STANRDARD'),
-                                    sim=rev_transform_tensor(y_mean,mu=q_mu,sigma=q_sigma, scaling='STANRDARD'))       
+            obj_nse = NSE.nse_tensor(obs=rev_transform_tensor(task['y_target'],mu=q_mu,sigma=q_sigma, scaling='STANDARD'),
+                                    mean_obs=rev_transform_tensor(task['y_target_val'],mu=q_mu,sigma=q_sigma, scaling='STANDARD'),
+                                    sim=rev_transform_tensor(y_mean,mu=q_mu,sigma=q_sigma, scaling='STANDARD'))       
             
             ravg.update(obj.item(), batch_size)
             ravg_nse.update(obj_nse.item(), batch_size)
@@ -124,7 +127,7 @@ def test(gen_test,model,dist='gaussian',fig_flag=False):
         elapsed = time.time() - start        
         print('Test NLL: %.3f -- NSE: %.3f -- time: %.3f' % (ravg.avg, ravg_nse.avg, elapsed))
     
-    return ravg.avg
+    return ravg.avg, ravg_nse.avg
 
 if __name__ == "__main__":
 
@@ -141,8 +144,8 @@ if __name__ == "__main__":
 
     # Instantiate ConvCNP
     model = ConvCNP(in_channels = len(C.context_channels)-1,
-                    #rho=SimpleConv(),
-                    rho=UNet(),
+                    rho=SimpleConv(),
+                    # rho=UNet(),
                     #rho=DepthSepConv1d(in_channels=rho_in_channels, conv_channels=64, num_layers=7, kernel_size=15),
                     points_per_unit=64*8,
                     dynamic_feature_embedding=False,
@@ -158,77 +161,73 @@ if __name__ == "__main__":
     model.to(device)
 
     # Data generator
-    gen = HydroDataset(
-                                                dataframe = df_train,
-                                                df_att = df_att,
-                                                batch_size = 16,
-                                                num_tasks = 16,
-                                                channels_c = C.context_channels,
-                                                channels_t = C.target_channels,
-                                                channels_att = C.attributes,
-                                                channels_t_val = C.target_val_channel,
-                                                context_mask = C.context_mask,
-                                                target_mask = C.target_mask,
-                                                extrapolate = C.extrapolate_flag,
-                                                timeslice = C.timeslice,
-                                                dropout_rate = 0, #  0.3,
-                                                concat_static_features = C.concat_static_features,
-                                                min_train_points= C.min_train_points,
-                                                min_test_points= C.min_test_points,
-                                                max_train_points= C.max_train_points,
-                                                max_test_points= C.max_test_points,
-                                                device='cpu',
-                                                )
+    gen_train = HydroDataset(dataframe = df_train,
+                            df_att = df_att,
+                            batch_size = 16,
+                            num_tasks = 16,
+                            channels_c = C.context_channels,
+                            channels_t = C.target_channels,
+                            channels_att = C.attributes,
+                            channels_t_val = C.target_val_channel,
+                            context_mask = C.context_mask,
+                            target_mask = C.target_mask,
+                            extrapolate = C.extrapolate_flag,
+                            timeslice = C.timeslice,
+                            dropout_rate = 0, #  0.3,
+                            concat_static_features = C.concat_static_features,
+                            min_train_points= C.min_train_points,
+                            min_test_points= C.min_test_points,
+                            max_train_points= C.max_train_points,
+                            max_test_points= C.max_test_points,
+                            device='cpu',
+                            )
 
     # Create a fixed set of outputs to predict at when plotting.
     x_test = torch.linspace(0., 1.,C.timeslice)[None, :, None].to(device)
 
     # Instantiate data generator for testing.
     NUM_TEST_TASKS = 16 # 128
-    gen_test = HydroDataset(
-                                                dataframe=df_test_both,
-                                                df_att = df_att,
-                                                batch_size = 32,
-                                                num_tasks = NUM_TEST_TASKS,
-                                                channels_c = C.context_channels,
-                                                channels_t = C.target_channels,
-                                                channels_att = C.attributes,
-                                                channels_t_val = C.target_val_channel,
-                                                context_mask = C.context_mask,
-                                                target_mask = C.target_mask,
-                                                extrapolate = False,
-                                                concat_static_features = C.concat_static_features,
-                                                timeslice = C.timeslice,
-                                                min_train_points = C.min_train_points,
-                                                min_test_points = C.min_test_points,
-                                                max_train_points = C.max_train_points,
-                                                max_test_points = C.max_test_points,
-                                                device = 'cpu'
-                                                )
+    gen_test = HydroDataset(dataframe=df_test_both,
+                            df_att = df_att,
+                            batch_size = 32,
+                            num_tasks = NUM_TEST_TASKS,
+                            channels_c = C.context_channels,
+                            channels_t = C.target_channels,
+                            channels_att = C.attributes,
+                            channels_t_val = C.target_val_channel,
+                            context_mask = C.context_mask,
+                            target_mask = C.target_mask,
+                            extrapolate = False,
+                            concat_static_features = C.concat_static_features,
+                            timeslice = C.timeslice,
+                            min_train_points = C.min_train_points,
+                            min_test_points = C.min_test_points,
+                            max_train_points = C.max_train_points,
+                            max_test_points = C.max_test_points,
+                            device = 'cpu'
+                            )
 
     # Instantiate data generator for validation.
     NUM_TEST_TASKS = 16 # 128
-    gen_val = HydroDataset(
-                                                dataframe=df_test_catchment,
-                                                df_att = df_att,
-                                                batch_size = 32,
-                                                num_tasks = NUM_TEST_TASKS,
-                                                channels_c = C.context_channels,
-                                                channels_t = C.target_channels,
-                                                channels_att = C.attributes,
-                                                channels_t_val = C.target_val_channel,
-                                                context_mask = C.context_mask,
-                                                target_mask = C.target_mask,
-                                                extrapolate = False,
-                                                concat_static_features = C.concat_static_features,
-                                                timeslice = C.timeslice,
-                                                min_train_points = C.min_train_points,
-                                                min_test_points = C.min_test_points,
-                                                max_train_points = C.max_train_points,
-                                                max_test_points = C.max_test_points,
-                                                device = 'cpu'
-                                                )
-
+    gen_val = HydroDataset(dataframe=df_test_catchment,
+                            df_att = df_att,
+                            batch_size = 32,
+                            num_tasks = NUM_TEST_TASKS,
+                            channels_c = C.context_channels,
+                            channels_t = C.target_channels,
+                            channels_att = C.attributes,
+                            channels_t_val = C.target_val_channel,
+                            context_mask = C.context_mask,
+                            target_mask = C.target_mask,
+                            extrapolate = False,
+                            concat_static_features = C.concat_static_features,
+                            timeslice = C.timeslice,
+                            min_train_points = C.min_train_points,
+                            min_test_points = C.min_test_points,
+                            max_train_points = C.max_train_points,
+                            max_test_points = C.max_test_points,
+                            device = 'cpu'
+                        )
 
     # Experiment folder
     change_folder = True
@@ -237,35 +236,36 @@ if __name__ == "__main__":
         experiment_name = 'test_NoEmbeddings'
         wd = WorkingDirectory(generate_root(experiment_name))
 
+    wandb_name = wd.root.split('\\')[1]
+    wandb.init(project="NLDAS_ConvCNP", name=wandb_name) #, entity="my_wandb_username")
+
     # Reset epochs
     reset_epochs = True
 
     if reset_epochs:
         train_obj_list, train_nse_list, test_obj_list, epoch_list = [], [], [], []
 
-    gen.batch_size = 32
+    gen_train.batch_size = 32
     gen_val.batch_size = 32
     gen_test.batch_size = 32
 
-    gen.num_tasks = 128
+    gen_train.num_tasks = 128
     gen_val.num_tasks = 64
     gen_test.num_tasks = 64
 
-    gen.dropout_rate = 0
+    gen_train.dropout_rate = 0
     gen_val.dropout_rate = 0
     gen_test.dropout_rate = 0
     static_masking_rate = 0
 
     num_workers = 6
 
-    train_dataloader = DataLoader(dataset=gen, batch_size=1, num_workers=num_workers)
+    train_dataloader = DataLoader(dataset=gen_train, batch_size=1, num_workers=num_workers)
     test_dataloader = DataLoader(dataset=gen_test, batch_size=1, num_workers=num_workers)
     val_dataloader = DataLoader(dataset=gen_val, batch_size=1, num_workers=num_workers)
 
-    # torch.autograd.set_detect_anomaly(False)
-
     # Some training hyper-parameters:
-    LEARNING_RATE = 1e-3
+    LEARNING_RATE = 1e-4
     NUM_EPOCHS = 200
     PLOT_FREQ = 1
 
@@ -283,15 +283,24 @@ if __name__ == "__main__":
     for epoch in range(NUM_EPOCHS):
         # Compute training objective.
         start_time = time.time()
-        train_obj, train_nse = train(train_dataloader, model, opt, dist=dist)
+        train_obj, train_nse = train(train_dataloader, model, opt, dist=dist, q_mu=q_mu, q_sigma=q_sigma)
+
+        # Log training loss to W&B
+        wandb.log({"train_loss": train_obj, "epoch": epoch})
+        wandb.log({"train_nse": train_nse, "epoch": epoch})
 
         epoch_list.append(epoch+last_epoch)
         train_obj_list.append(train_obj)
         train_nse_list.append(train_nse)
         
-        #torch.cuda.empty_cache()
-        test_obj = test(test_dataloader,model,dist=dist)
-        #torch.cuda.empty_cache()
+        test_obj, test_nse = test(data = test_dataloader,
+                        model = model, 
+                        dist = dist)
+
+        # Log test loss to W&B
+        wandb.log({"test_loss": test_obj, "epoch": epoch})
+        wandb.log({"test_nse": test_nse, "epoch": epoch})
+        
         test_obj_list.append(test_obj)
         
         elapsed = time.time() - start_time
@@ -309,11 +318,10 @@ if __name__ == "__main__":
             plt.title('Test set')
             display.clear_output(wait=True)
 
+        print('Epoch %s ¦ train NLL: %.3f ¦ test NLL: %.3f ¦ train NSE: %.3f ¦ test NSE: %.3f ¦ time: %.3f' % (epoch + last_epoch, train_obj, test_obj, train_nse, test_nse, elapsed))
 
-        print('Epoch %s ¦ train NLL: %.3f ¦ test NLL: %.3f ¦ train NSE: %.3f ¦ time: %.3f' % (epoch + last_epoch, train_obj, test_obj, train_nse, elapsed))
-
-        plot_training_loss(train_obj_list, test_obj_list)
-        plt.show()
+        # plot_training_loss(train_obj_list, test_obj_list)
+        # plt.show()
         
         save_as_best = True if test_obj == min(test_obj_list) else False
         save_checkpoint(wd,model.state_dict(),is_best=save_as_best)

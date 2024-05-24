@@ -13,7 +13,7 @@ def scaling(df,
     
     for field in fields:
 
-        if field == 'OBS_RUN':
+        if field == 'QObs(mm/d)':
             if method == 'std':
                 df[field], q_mu, q_sigma = standardise(df[field], stats=True)
             elif method == 'norm':
@@ -99,7 +99,7 @@ def rev_boxcox_transform_tensor(x,ld):
 
 def rev_transform(x, transform="NONE", scaling="NONE", mu=None, sigma=None, min=None, max=None, e=1, ld=None, s=0):
 
-    if scaling == "STANRDARD":
+    if scaling == "STANDARD":
         x = rev_standardise(x, mu=mu, sigma=sigma)
     elif scaling == "NORM":
         x = rev_normalise(x, x_min=min, x_max=max)
@@ -116,7 +116,7 @@ def rev_transform(x, transform="NONE", scaling="NONE", mu=None, sigma=None, min=
 
 def rev_transform_tensor(x, transform="NONE", scaling="NONE", mu=None, sigma=None, min=None, max=None, e=1, ld=None, s=0):
 
-    if scaling == "STANRDARD":
+    if scaling == "STANDARD":
         x = rev_standardise(x, mu=mu, sigma=sigma)
     elif scaling == "NORM":
         x = rev_normalise(x, x_min=min, x_max=max)

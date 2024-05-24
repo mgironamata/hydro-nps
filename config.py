@@ -8,17 +8,28 @@ basins_file = r"C:\Users\Sior AMD-4\Downloads\basin_list.txt"
 path = r"C:\Users\Sior AMD-4\Downloads\attibutes.csv"
 
 
+
+'PRCP(mm/day)', 
+'Dayl(s)', 
+'SRAD(W/m2)',
+'SWE(mm)', 
+'Tmax(C)', 
+'Tmin(C)', 
+'Vp(Pa)', 
+'QObs(mm/d)',
+'Year'
+
 # Fields configuration
 fields = [
-    "OBS_RUN",
-    "prcp(mm/day)",
-    "dayl(s)",
-    "srad(W/m2)",
-    "swe(mm)",
-    "tmax(C)",
-    "tmin(C)",
-    "vp(Pa)",
-    "year"
+    "QObs(mm/d)",
+    'PRCP(mm/day)', 
+    'Dayl(s)', 
+    'SRAD(W/m2)',
+    'SWE(mm)', 
+    'Tmax(C)', 
+    'Tmin(C)', 
+    'Vp(Pa)', 
+    'Year'
 ]
 
 # Attributes configuration
@@ -92,19 +103,20 @@ e_date_tr = '1995-09-30'
 s_date_te = '1995-10-01'
 e_date_te = '2010-09-30'
 
-context_channels = ['OBS_RUN',
+context_channels = ['QObs(mm/d)',
                     #'dayl(s)',
-                    'doy_cos',
-                    'doy_sin',
-                    'prcp(mm/day)', 
-                    'srad(W/m2)',  
-                    'tmax(C)',
-                    'tmin(C)', 
-                    'vp(Pa)',
+                    # 'doy_cos',
+                    # 'doy_sin',
+                    'PRCP(mm/day)', 
+                    # 'Dayl(s)', 
+                    'SRAD(W/m2)',
+                    'Tmax(C)', 
+                    'Tmin(C)', 
+                    'Vp(Pa)',
                    ]
 
 target_channels = context_channels
-target_val_channel = ['OBS_RUN_mean']
+target_val_channel = ['QObs(mm/d)_mean']
 
 context_mask = [0,1,1,1,1,1,1,1]
 target_mask = [0,1,1,1,1,1,1,1]

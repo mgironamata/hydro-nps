@@ -20,7 +20,7 @@ def preprocess_data(df_raw, selected_basins):
     df_raw.drop_duplicates(inplace=True)
     print("Length of dataframe after dropping duplicates: ", len(df_raw))
     
-    df_raw = df_raw[df_raw['OBS_RUN'] >= 0]
+    df_raw = df_raw[df_raw['QObs(mm/d)'] >= 0]
     print("Length of dataframe after filtering out error values: ", len(df_raw))
     
     df_raw['year'] = df_raw['YR']
@@ -59,36 +59,36 @@ def scale_and_shift_data(df, dist, C):
     df, q_mu, q_sigma = scaling(df, C.fields, method='std')
     
     if dist == 'gamma':
-        Q_shift = abs(df['OBS_RUN'].min()) + 1
-        df['OBS_RUN'] = df['OBS_RUN'] + Q_shift
+        Q_shift = abs(df['QObs(mm/d)'].min()) + 1
+        df['QObs(mm/d)'] = df['QObs(mm/d)'] + Q_shift
         print(f'Shifted by {Q_shift}')
     else:
         print('No shift')
     
-    df['OBS_RUN_mean'] = df.groupby('hru08')['OBS_RUN'].transform(lambda x: x.mean())
+    df['QObs(mm/d)_mean'] = df.groupby('basin')['QObs(mm/d)'].transform(lambda x: x.mean())
     return df, q_mu, q_sigma
 
 def split_dataframes(df, C, tr, te):
-    df_train = df[(df['DATE'] >= C.s_date_tr) & (df['DATE'] <= C.e_date_tr) & (df['basin'].isin(tr))].copy()
-    df_test_both = df[(df['DATE'] >= C.s_date_te) & (df['DATE'] <= C.e_date_te) & (df['basin'].isin(te))].copy()
-    df_test_catchment = df[(df['DATE'] >= C.s_date_tr) & (df['DATE'] <= C.e_date_tr) & (df['basin'].isin(te))].copy()
-    df_test_temporal = df[(df['DATE'] >= C.s_date_te) & (df['DATE'] <= C.e_date_te) & (df['basin'].isin(tr))].copy()
+    train = df[(df.index >= C.s_date_tr) & (df.index <= C.e_date_tr) & (df['basin'].isin(tr))].copy()
+    test_both = df[(df.index >= C.s_date_te) & (df.index <= C.e_date_te) & (df['basin'].isin(te))].copy()
+    test_catchment = df[(df.index >= C.s_date_tr) & (df.index <= C.e_date_tr) & (df['basin'].isin(te))].copy()
+    test_temporal = df[(df.index >= C.s_date_te) & (df.index <= C.e_date_te) & (df['basin'].isin(tr))].copy()
     
-    for df in [df_train, df_test_both, df_test_catchment, df_test_temporal]:
-        df.drop(C.list_to_drop, axis=1, inplace=True)
+    for df in [train, test_both, test_catchment, test_temporal]:
+        # df.drop(C.list_to_drop, axis=1, inplace=True)
         df.reset_index(drop=True, inplace=True)
     
-    return df_train, df_test_both, df_test_catchment, df_test_temporal
+    return train, test_both, test_catchment, test_temporal
 
-def save_data(df_train, df_test_both, df_test_catchment, df_test_temporal, df_att, q_mu, q_sigma, dist):
+def save_data(train, test_both, test_catchment, test_temporal, att, q_mu, q_sigma, dist):
     if not os.path.exists('pickled'):
         os.mkdir('pickled')
     
-    df_train.to_pickle('pickled/train.pkl')
-    df_test_both.to_pickle('pickled/test_both.pkl')
-    df_test_catchment.to_pickle('pickled/test_catchment.pkl')
-    df_test_temporal.to_pickle('pickled/test_temporal.pkl')
-    df_att.to_pickle('pickled/df_att.pkl')
+    train.to_pickle('pickled/train.pkl')
+    test_both.to_pickle('pickled/test_both.pkl')
+    test_catchment.to_pickle('pickled/test_catchment.pkl')
+    test_temporal.to_pickle('pickled/test_temporal.pkl')
+    att.to_pickle('pickled/df_att.pkl')
     
     with open('pickled/q_mu.pkl', 'wb') as f:
         pickle.dump(q_mu, f)
@@ -98,19 +98,27 @@ def save_data(df_train, df_test_both, df_test_catchment, df_test_temporal, df_at
         pickle.dump(dist, f)
 
 def main():
-    df_raw = load_data('df_raw.pkl')
+    import numpy as np
+
+    df = load_data(r'C:\Users\Sior AMD-4\repos\hydro-nps\data\incoming\nldas_data.pkl')
     selected_basins = load_selected_basins(C.basins_file)
-    df_raw = preprocess_data(df_raw, selected_basins)
+    selected_basins = [str(b).zfill(8) for b in selected_basins]
+    
+    # df = preprocess_data(df, selected_basins)
     df_att = process_attributes(C.path)
-    
-    df = df_raw.copy()
+
     dist = 'gaussian'
-    
-    df = apply_transformations(df_raw, df, log_transformation=False, boxcox_transformation=False)
+    # df = apply_transformations(df, df, log_transformation=False, boxcox_transformation=False)
     df, q_mu, q_sigma = scale_and_shift_data(df, dist, C)
+
+    # calculate mean of QObs by basin and add as new column
+    df['QObs(mm/d)_mean'] = df.groupby('basin')['QObs(mm/d)'].transform('mean')
     
-    # tr, te = [], []  # Example lists, replace with actual lists of training and testing basins
-    tr = te = selected_basins
+    # from selected basins, randomly take 1/12th of the basins for testing
+    np.random.seed(0)
+    np.random.shuffle(selected_basins)
+    te = selected_basins[:len(selected_basins)//12]
+    tr = selected_basins[len(selected_basins)//12:]
     
     df_train, df_test_both, df_test_catchment, df_test_temporal = split_dataframes(df, C, tr, te)
     save_data(df_train, df_test_both, df_test_catchment, df_test_temporal, df_att, q_mu, q_sigma, dist)
