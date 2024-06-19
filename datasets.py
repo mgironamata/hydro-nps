@@ -367,7 +367,7 @@ if __name__ == "__main__":
     df = pd.read_pickle('pickled/train.pkl')
     df_att = pd.read_pickle('pickled/df_att.pkl')
 
-    dataset = HydroTestDataset(dataframe=df,
+    dataset = HydroDataset(dataframe=df,
                             df_att=df_att,
                             channels_c = C.context_channels,
                             channels_t = C.target_channels,
@@ -386,13 +386,15 @@ if __name__ == "__main__":
     
     dataset.__getitem__(0)
 
-    # dataloader = DataLoader(dataset, batch_size=1, num_workers=0)
+    dataloader = DataLoader(dataset, batch_size=1, num_workers=0)
             
     start = time.time()
     for idx, batch in enumerate(dataloader):
-        print(batch['y_target'].shape)
+        for key in batch.keys():
+            print(key, batch[key].shape)
+        
         elapsed = time.time() - start
-        if idx == 5:
-            break
+        
+        break
         
     print(f"Elapsed time: {elapsed:.2f} s")

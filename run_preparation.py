@@ -37,7 +37,7 @@ def process_attributes(path):
 
 def apply_transformations(df_raw, df, log_transformation=False, boxcox_transformation=False):
     if log_transformation:
-        target_fields = ['prcp(mm/day)']
+        target_fields = ["PRCP(mm/day)", "QObs(mm/d)"]
         for f in target_fields:
             df[f] = log_transform(df_raw[f], 1)
             print(f"log of {f}")
@@ -108,7 +108,7 @@ def main():
     df_att = process_attributes(C.path)
 
     dist = 'gaussian'
-    # df = apply_transformations(df, df, log_transformation=False, boxcox_transformation=False)
+    df = apply_transformations(df, df, log_transformation=C.transform, boxcox_transformation=False)
     df, q_mu, q_sigma = scale_and_shift_data(df, dist, C)
 
     # calculate mean of QObs by basin and add as new column

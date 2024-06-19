@@ -117,7 +117,7 @@ def compute_dists(x, y):
     """
     assert x.shape[2] == 1 and y.shape[2] == 1, \
         'The inputs x and y must be 1-dimensional observations.'
-    return (x - y.permute(0, 2, 1)) ** 2
+    return (x - y.permute(0, 2, 1))
 
 
 def pad_concat(t1, t2):

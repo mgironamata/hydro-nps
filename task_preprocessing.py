@@ -1,7 +1,6 @@
 import torch
 import numpy as np 
 from utils import device
-import pdb
 
 __all__ = ['task_mask',
            'random_mask',
@@ -72,6 +71,7 @@ def prep_task(task,context_mask,target_mask,dropout_rate=0,embedding=False,obser
         if observe_at_target == True:
             task['x_context'] = torch.cat([task['x_context'],task['x_target']],dim=1)
             task['y_context'] = torch.cat([task['y_context'],task['y_target']],dim=1)[:,:,1:]
+            # task['y_context'] = torch.cat([task['y_context'],task['y_target']],dim=1)[:,:,:]
 
     task['y_target'] = task['y_target'][:,:,0].unsqueeze(dim=2)
 

@@ -24,7 +24,7 @@ import matplotlib.pyplot as plt
 plt.ioff()  # Disable interactive mode
 
 import wandb
-
+flag_wandb = True
 
 torch.backends.cudnn.benchmark = False
 
@@ -66,10 +66,17 @@ def train(data, model, opt, q_mu, q_sigma, dist='gaussian', static_masking_rate=
         obj.backward()
         opt.step()
         opt.zero_grad()
+
+        # y_mean and y_sigma to numpy arrays
+        y_mean, y_sigma = y_mean.detach(), y_sigma.detach()
+        
+        obs = rev_transform_tensor(task['y_target'], scaling=C.scaling, transform=C.transform, mu=q_mu, sigma=q_sigma).detach() 
+        mean_obs = rev_transform_tensor(task['y_target_val'], scaling=C.scaling, transform=C.transform, mu=q_mu, sigma=q_sigma).detach()
+        sim = rev_transform_tensor(y_mean, scaling=C.scaling, transform=C.transform, mu=q_mu, sigma=q_sigma, is_label=True, sigma_log=y_sigma)
             
-        obj_nse = NSE.nse_tensor(obs = rev_transform_tensor(task['y_target'], scaling='STANDARD', mu=q_mu, sigma=q_sigma),
-                                 mean_obs = rev_transform_tensor(task['y_target_val'], scaling='STANDARD', mu=q_mu, sigma=q_sigma),
-                                 sim = rev_transform_tensor(y_mean, scaling='STANDARD', mu=q_mu, sigma=q_sigma) 
+        obj_nse = NSE.nse_tensor(obs = obs,
+                                 mean_obs = mean_obs,
+                                 sim = sim 
                                 )
 
         task_obj_list.append(obj.item())
@@ -84,7 +91,7 @@ def train(data, model, opt, q_mu, q_sigma, dist='gaussian', static_masking_rate=
         
     return ravg.avg, ravg_nse.avg
 
-def test(data, model, dist='gaussian', fig_flag=False):
+def test(data, model, dist='gaussian', fig_flag=False, q_mu=None, q_sigma=None, static_masking_rate=0.0):
     # Compute average task log-likelihood.
     ravg = RunningAverage()
     ravg_nse = RunningAverage()
@@ -110,9 +117,10 @@ def test(data, model, dist='gaussian', fig_flag=False):
             
             batch_size = get_batch_size(gen_test)
             
-            obj_nse = NSE.nse_tensor(obs=rev_transform_tensor(task['y_target'],mu=q_mu,sigma=q_sigma, scaling='STANDARD'),
-                                    mean_obs=rev_transform_tensor(task['y_target_val'],mu=q_mu,sigma=q_sigma, scaling='STANDARD'),
-                                    sim=rev_transform_tensor(y_mean,mu=q_mu,sigma=q_sigma, scaling='STANDARD'))       
+            obj_nse = NSE.nse_tensor(obs=rev_transform_tensor(task['y_target'],transform=C.transform, mu=q_mu,sigma=q_sigma, scaling=C.scaling),
+                                    mean_obs=rev_transform_tensor(task['y_target_val'],transform=C.transform, mu=q_mu,sigma=q_sigma, scaling=C.scaling),
+                                    sim=rev_transform_tensor(y_mean, scaling=C.scaling, transform=C.transform, mu=q_mu, sigma=q_sigma, is_label=True, sigma_log=y_sigma) 
+                                    )
             
             ravg.update(obj.item(), batch_size)
             ravg_nse.update(obj_nse.item(), batch_size)
@@ -144,10 +152,10 @@ if __name__ == "__main__":
 
     # Instantiate ConvCNP
     model = ConvCNP(in_channels = len(C.context_channels)-1,
-                    rho=SimpleConv(),
-                    # rho=UNet(),
-                    #rho=DepthSepConv1d(in_channels=rho_in_channels, conv_channels=64, num_layers=7, kernel_size=15),
-                    points_per_unit=64*8,
+                    # rho=SimpleConv(in_channels=C.rho_in_channels),
+                    # rho=UNet(in_channels=C.rho_in_channels),
+                    rho=DepthSepConv1d(in_channels=C.rho_in_channels, conv_channels=64, num_layers=7, kernel_size=15),
+                    points_per_unit=C.points_per_unit,
                     dynamic_feature_embedding=False,
                     dynamic_embedding_dims=C.dynamic_embedding_dims,
                     static_embedding_dims=C.static_embedding_dims,
@@ -233,11 +241,12 @@ if __name__ == "__main__":
     change_folder = True
 
     if change_folder:
-        experiment_name = 'test_NoEmbeddings'
+        experiment_name = 'forecasting_loggaussian'
         wd = WorkingDirectory(generate_root(experiment_name))
 
-    wandb_name = wd.root.split('\\')[1]
-    wandb.init(project="NLDAS_ConvCNP", name=wandb_name) #, entity="my_wandb_username")
+    if flag_wandb:
+        wandb_name = wd.root.split('\\')[1]
+        wandb.init(project="NLDAS_ConvCNP", name=wandb_name) #, entity="my_wandb_username")
 
     # Reset epochs
     reset_epochs = True
@@ -258,14 +267,14 @@ if __name__ == "__main__":
     gen_test.dropout_rate = 0
     static_masking_rate = 0
 
-    num_workers = 6
+    num_workers = 0
 
     train_dataloader = DataLoader(dataset=gen_train, batch_size=1, num_workers=num_workers)
     test_dataloader = DataLoader(dataset=gen_test, batch_size=1, num_workers=num_workers)
     val_dataloader = DataLoader(dataset=gen_val, batch_size=1, num_workers=num_workers)
 
     # Some training hyper-parameters:
-    LEARNING_RATE = 1e-4
+    LEARNING_RATE = 5*1e-4
     NUM_EPOCHS = 200
     PLOT_FREQ = 1
 
@@ -283,11 +292,16 @@ if __name__ == "__main__":
     for epoch in range(NUM_EPOCHS):
         # Compute training objective.
         start_time = time.time()
-        train_obj, train_nse = train(train_dataloader, model, opt, dist=dist, q_mu=q_mu, q_sigma=q_sigma)
+        train_obj, train_nse = train(train_dataloader, 
+                                     model = model, 
+                                     opt = opt, 
+                                     dist=dist, 
+                                     q_mu=q_mu, q_sigma=q_sigma)
 
         # Log training loss to W&B
-        wandb.log({"train_loss": train_obj, "epoch": epoch})
-        wandb.log({"train_nse": train_nse, "epoch": epoch})
+        if flag_wandb:
+            wandb.log({"train_loss": train_obj, "epoch": epoch})
+            wandb.log({"train_nse": train_nse, "epoch": epoch})
 
         epoch_list.append(epoch+last_epoch)
         train_obj_list.append(train_obj)
@@ -295,11 +309,13 @@ if __name__ == "__main__":
         
         test_obj, test_nse = test(data = test_dataloader,
                         model = model, 
-                        dist = dist)
+                        dist = dist, 
+                        q_mu=q_mu, q_sigma=q_sigma)
 
         # Log test loss to W&B
-        wandb.log({"test_loss": test_obj, "epoch": epoch})
-        wandb.log({"test_nse": test_nse, "epoch": epoch})
+        if flag_wandb:
+            wandb.log({"test_loss": test_obj, "epoch": epoch})
+            wandb.log({"test_nse": test_nse, "epoch": epoch})
         
         test_obj_list.append(test_obj)
         

@@ -1,4 +1,3 @@
-
 filepath = r"C:\Users\Sior AMD-4\Downloads\daymet_data_seed05.csv"
 
 # basins_file = r'../../../ealstm_regional_modelling/ealstm_regional_modeling/data/basin_list.txt'
@@ -7,17 +6,15 @@ basins_file = r"C:\Users\Sior AMD-4\Downloads\basin_list.txt"
 # path = '../../data/camels_processed/attibutes.csv'
 path = r"C:\Users\Sior AMD-4\Downloads\attibutes.csv"
 
-
-
-'PRCP(mm/day)', 
-'Dayl(s)', 
-'SRAD(W/m2)',
-'SWE(mm)', 
-'Tmax(C)', 
-'Tmin(C)', 
-'Vp(Pa)', 
-'QObs(mm/d)',
-'Year'
+# 'PRCP(mm/day)', 
+# 'Dayl(s)', 
+# 'SRAD(W/m2)',
+# 'SWE(mm)', 
+# 'Tmax(C)', 
+# 'Tmin(C)', 
+# 'Vp(Pa)', 
+# 'QObs(mm/d)',
+# 'Year'
 
 # Fields configuration
 fields = [
@@ -128,24 +125,29 @@ feature_embedding_flag = True
 feature_embedding_key_flag = True
 extrapolate_flag = True
 
-timeslice = 365*2
+timeslice = 365+90
 
-min_train_points = 270
-max_train_points = 360
-min_test_points = 360
-max_test_points = 364
+min_train_points = 90
+max_train_points = 90
+min_test_points = 365
+max_test_points = 365
 
-dynamic_embedding_dims = 10
-static_embedding_dims = 5
+dynamic_embedding_dims = 8
+static_embedding_dims = 8
 
 concat_static_features = False
 static_feature_embedding = True
 
-static_embedding_location = "after_encoder" 
+static_embedding_location = "after_encoder" # "after_encoder" or "after_rho"
 static_feature_missing_data = False # True
 static_masking_rate = 0 # 0.25
 
-encoder_out_channels = 8
+points_per_unit = timeslice # 64*8
+
+encoder_out_channels = 16
 
 rho_in_channels = encoder_out_channels if static_embedding_location != "after_encoder" else 8 + static_embedding_dims
 static_embedding_in_channels = 2 if static_feature_missing_data else len(attributes)
+
+transform = "LOG"
+scaling = "STANDARD"

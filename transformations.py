@@ -83,7 +83,7 @@ def rev_standardise(x_t, mu, sigma):
 def rev_normalise(x_t, min, max):
     return x_t*(max - min) + min   
     
-def rev_log_transform(x, e=1e-6):
+def rev_log_transform(x, e=0):
     return np.exp(x)-e  
 
 def rev_boxcox_transform(x, ld):
@@ -114,7 +114,7 @@ def rev_transform(x, transform="NONE", scaling="NONE", mu=None, sigma=None, min=
     return x - s
 
 
-def rev_transform_tensor(x, transform="NONE", scaling="NONE", mu=None, sigma=None, min=None, max=None, e=1, ld=None, s=0):
+def rev_transform_tensor(x, sigma_log = None, is_label = True, transform="NONE", scaling="NONE", mu=None, sigma=None, min=None, max=None, e=1, ld=None, s=0):
 
     if scaling == "STANDARD":
         x = rev_standardise(x, mu=mu, sigma=sigma)
@@ -124,14 +124,17 @@ def rev_transform_tensor(x, transform="NONE", scaling="NONE", mu=None, sigma=Non
         pass
 
     if transform == "LOG":
-        x = torch.exp(x) - e
+        if is_label:
+            x = torch.exp(x) - e
+        else:
+            x, _ = rev_lognormal(mu_log = x, sigma_log = sigma_log, e = 1)
     if transform == "BOXCOX":
         x = rev_boxcox_transform_tensor(x, ld=ld)
 
     return x - s
 
-def rev_lognormal(mu_log, sigma_log):
-    E = np.exp(mu_log + 0.5*sigma_log**2)
-    Var = (E**2)*(np.exp(sigma_log**2)-1)
-    return E, np.sqrt(Var)
+def rev_lognormal(mu_log, sigma_log, e):
+    E = torch.exp(mu_log + 0.5*sigma_log**2) - e
+    Var = (E**2)*(torch.exp(sigma_log**2)-1)
+    return E, torch.sqrt(Var)
 

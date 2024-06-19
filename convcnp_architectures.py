@@ -39,7 +39,6 @@ class FeatureEmbedding(nn.Module):
     def forward(self, y, a, b):
         return self.f(y)
 
-
 class DeepSet(nn.Module):
     
     """Feature set embedding layer
@@ -359,6 +358,7 @@ class ConvCNP(nn.Module):
                 static_feature_missing_data=True,
                 static_embedding_in_channels=2,
                 distribution='gaussian'):
+        
         super(ConvCNP, self).__init__()
         self.activation = nn.Sigmoid()
         self.sigma_fn = nn.Softplus()

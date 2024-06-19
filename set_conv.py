@@ -88,6 +88,8 @@ class ConvDeepSet(nn.Module):
         # Compute the weights.
         # Shape: (batch, n_in, n_out, in_channels).
         wt = self.rbf(dists)
+        # wt = self.one_sided_rbf(dists)
+        # wt = self.matern(dists)
 
         if self.use_density:
             # Compute the extra density channel.
@@ -134,8 +136,52 @@ class ConvDeepSet(nn.Module):
         """
         # Compute the RBF kernel, broadcasting appropriately.
         scales = self.sigma_fn(self.sigma)[None, None, None, :]
-        a, b, c = dists.shape
-        return torch.exp(-0.5 * dists.view(a, b, c, -1) / scales ** 2)
+        squared_dists = dists ** 2
+        a, b, c = squared_dists.shape
+        return torch.exp(-0.5 * squared_dists.view(a, b, c, -1) / scales ** 2)  
+    
+    def matern(self, dists, nu=1.5):
+        """Compute the Matérn kernel values for 1-dimensional distances using the correct length scales.
+
+        Args:
+            dists (tensor): Pair-wise distances between `x` and `t` with shape (a, b).
+            nu (float): Smoothness parameter of the Matérn kernel.
+
+        Returns:
+            tensor: Evaluation of `psi(x, t)` with `psi` a Matérn kernel.
+        """
+        # Compute the length scales, broadcasting appropriately.
+        scales = self.sigma_fn(self.sigma)[None, None, None, :]
+        
+        if nu == 1.5:
+            sqrt_3 = torch.sqrt(torch.tensor(3.0))
+            scaled_dists = sqrt_3 * dists[..., None] / scales
+            return (1.0 + scaled_dists) * torch.exp(-scaled_dists)
+        else:
+            raise NotImplementedError("Only ν=1.5 is implemented.")
+
+    
+    def one_sided_rbf(self, dists):
+        """Compute the one-sided RBF kernel values for squared distances using the correct length scales.
+
+        Args:
+            dists (tensor): Pair-wise squared distances between `x` and `t`.
+
+        Returns:
+            tensor: Evaluation of `psi(x, t)` with `psi` a one-sided RBF kernel.
+        """
+        # Compute the length scales, broadcasting appropriately.
+        scales = self.sigma_fn(self.sigma)[None, None, None, :]
+        
+        # Mask negative distances
+        mask = dists >= 0
+
+        squared_dists = dists ** 2
+        
+        # Apply the mask to exclude negative distances from the calculation
+        squared_dists = squared_dists * mask.float()
+        
+        return torch.exp(-0.5 * squared_dists / scales ** 2) * mask.float()
 
 
 class ConvCNP(nn.Module):
