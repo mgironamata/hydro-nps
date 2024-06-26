@@ -103,10 +103,15 @@ class HydroDataset(Dataset):
         selected_rows = self.dataframe.iloc[randoms]
         basins = selected_rows['basin'].values.T.tolist()
 
-
         for i in range(self.batch_size):
         # Sample inputs and outputs.
-            s_ind, e_ind = randoms[i], randoms[i] + self.timeslice
+                
+            e_ind_b = self.dataframe.index[self.dataframe['basin']==basins[i]][-1]
+            
+            if e_ind > e_ind_b:
+                e_ind = e_ind_b
+                s_ind = e_ind - self.timeslice
+            
             df = self.dataframe.iloc[s_ind:e_ind].copy()
             x_ind = _rand((s_ind, e_ind),num_points)
             
