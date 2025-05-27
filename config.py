@@ -120,17 +120,17 @@ target_mask = [0,1,1,1,1,1,1,1]
 
 list_to_drop = ['MNTH','DY','hru02','hru04','RAIM','TAIR','PET','ET','SWE','swe(mm)','PRCP','seed','id_lag','HR']
 
-observed_at_target_flag = True
+observed_at_target_flag = False
 feature_embedding_flag = True
 feature_embedding_key_flag = True
 extrapolate_flag = True
 
-timeslice = 365+90
+timeslice = 365
 
-min_train_points = 90
-max_train_points = 90
-min_test_points = 365
-max_test_points = 365
+min_train_points = 355
+max_train_points = 355
+min_test_points = 7
+max_test_points = 10
 
 dynamic_embedding_dims = 8
 static_embedding_dims = 8
@@ -149,5 +149,5 @@ encoder_out_channels = 16
 rho_in_channels = encoder_out_channels if static_embedding_location != "after_encoder" else 8 + static_embedding_dims
 static_embedding_in_channels = 2 if static_feature_missing_data else len(attributes)
 
-transform = "LOG"
+transform = False # "LOG"
 scaling = "STANDARD"

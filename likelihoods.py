@@ -75,7 +75,7 @@ def compute_logpdf(y_loc, y_scale, task, dist='gaussian', return_mu_and_sigma=Fa
         obj = -gamma_logpdf(task['y_target'], y_loc, y_scale, 'batched_mean')
     elif dist == 'gaussian_fixed':
         y_mean, y_std = y_loc, y_scale
-        obj = -gaussian_logpdf(task['y_target'], y_loc, y_scale/y_scale, 'batched_mean')
+        obj = -gaussian_logpdf(task['y_target'], y_loc, y_scale/(y_scale*2), 'batched_mean')
 
     if return_mu_and_sigma:
         return obj, y_mean, y_std

@@ -25,6 +25,7 @@ plt.ioff()  # Disable interactive mode
 
 import wandb
 flag_wandb = True
+debug_mode = False
 
 torch.backends.cudnn.benchmark = False
 
@@ -41,14 +42,14 @@ def unpickle_object(file_path):
         obj = pickle.load(file)
     return obj
 
-def train(data, model, opt, q_mu, q_sigma, dist='gaussian', static_masking_rate=0.0):
+def train(data, model, opt, q_mu, q_sigma, basin_stds, dist='gaussian', static_masking_rate=0.0):
     
     ravg = RunningAverage()
     ravg_nse = RunningAverage() 
     model.train()
     task_obj_list = []
     
-    for step, task in enumerate(data):
+    for step, (task, basins) in enumerate(data):
         
         task = loaded_task(task)
         
@@ -70,28 +71,32 @@ def train(data, model, opt, q_mu, q_sigma, dist='gaussian', static_masking_rate=
         # y_mean and y_sigma to numpy arrays
         y_mean, y_sigma = y_mean.detach(), y_sigma.detach()
         
-        obs = rev_transform_tensor(task['y_target'], scaling=C.scaling, transform=C.transform, mu=q_mu, sigma=q_sigma).detach() 
-        mean_obs = rev_transform_tensor(task['y_target_val'], scaling=C.scaling, transform=C.transform, mu=q_mu, sigma=q_sigma).detach()
-        sim = rev_transform_tensor(y_mean, scaling=C.scaling, transform=C.transform, mu=q_mu, sigma=q_sigma, is_label=True, sigma_log=y_sigma)
+        obs = rev_transform_tensor(task['y_target'], scaling=C.scaling, transform=C.transform, mu=q_mu, sigma=q_sigma).detach().cpu() 
+        mean_obs = rev_transform_tensor(task['y_target_val'], scaling=C.scaling, transform=C.transform, mu=q_mu, sigma=q_sigma).detach().cpu()
+        sim = rev_transform_tensor(y_mean, scaling=C.scaling, transform=C.transform, mu=q_mu, sigma=q_sigma, is_label=True, sigma_log=y_sigma).detach().cpu()
             
+        # select the basin stds for the current batch based on basins list
+        basin_stds_tensor = torch.tensor([basin_stds[basins[i][0]] for i in range(len(basins))])
+
         obj_nse = NSE.nse_tensor(obs = obs,
-                                 mean_obs = mean_obs,
-                                 sim = sim 
+                                 sim = sim,
+                                 basin_stds=basin_stds_tensor,
+                                 epsilon=0.1
                                 )
 
         task_obj_list.append(obj.item())
         ravg.update(obj.item(), data.batch_size)
         ravg_nse.update(obj_nse.item(), data.batch_size)
         
-        # if step % 250 == 0:
-        #     print("step %s -- avg training loss is %.3f" % (step, ravg.avg)) 
+        # if step % 10 == 0:
+        #     print(f"step {step} -- Loss: {ravg.avg:.3f} -- NSE: {ravg_nse.avg:.3f}") 
             
     plt.plot(task_obj_list)
     plt.show
         
     return ravg.avg, ravg_nse.avg
 
-def test(data, model, dist='gaussian', fig_flag=False, q_mu=None, q_sigma=None, static_masking_rate=0.0):
+def test(data, model, dist='gaussian', fig_flag=False, q_mu=None, q_sigma=None, basin_stds=None, static_masking_rate=0.0):
     # Compute average task log-likelihood.
     ravg = RunningAverage()
     ravg_nse = RunningAverage()
@@ -100,7 +105,7 @@ def test(data, model, dist='gaussian', fig_flag=False, q_mu=None, q_sigma=None, 
     start = time.time()
     
     with torch.no_grad():
-        for _, task in enumerate(data):
+        for _, (task, basins) in enumerate(data):
             
             task = loaded_task(task)
 
@@ -116,10 +121,17 @@ def test(data, model, dist='gaussian', fig_flag=False, q_mu=None, q_sigma=None, 
             obj, y_mean, y_sigma = compute_logpdf(y_loc, y_scale, task, dist=dist, return_mu_and_sigma=True)
             
             batch_size = get_batch_size(gen_test)
+
+            obs=rev_transform_tensor(task['y_target'],transform=C.transform, mu=q_mu,sigma=q_sigma, scaling=C.scaling).detach().cpu()
+            mean_obs=rev_transform_tensor(task['y_target_val'],transform=C.transform, mu=q_mu,sigma=q_sigma, scaling=C.scaling).detach().cpu()
+            sim=rev_transform_tensor(y_mean, scaling=C.scaling, transform=C.transform, mu=q_mu, sigma=q_sigma, is_label=True, sigma_log=y_sigma).detach().cpu() 
+
+            basin_stds_tensor = torch.tensor([basin_stds[basins[i][0]] for i in range(len(basins))])
             
-            obj_nse = NSE.nse_tensor(obs=rev_transform_tensor(task['y_target'],transform=C.transform, mu=q_mu,sigma=q_sigma, scaling=C.scaling),
-                                    mean_obs=rev_transform_tensor(task['y_target_val'],transform=C.transform, mu=q_mu,sigma=q_sigma, scaling=C.scaling),
-                                    sim=rev_transform_tensor(y_mean, scaling=C.scaling, transform=C.transform, mu=q_mu, sigma=q_sigma, is_label=True, sigma_log=y_sigma) 
+            obj_nse = NSE.nse_tensor(obs=obs,
+                                     sim=sim,
+                                     basin_stds=basin_stds_tensor,
+                                     epsilon=0.1
                                     )
             
             ravg.update(obj.item(), batch_size)
@@ -139,10 +151,9 @@ def test(data, model, dist='gaussian', fig_flag=False, q_mu=None, q_sigma=None, 
 
 if __name__ == "__main__":
 
-    q_mu = unpickle_object('pickled/q_mu.pkl')
-    q_sigma = unpickle_object('pickled/q_sigma.pkl')
     # dist = unpickle_object('pickled/dist.pkl')\
     dist = "gaussian"
+    stats_dict = unpickle_object('pickled/stats_dict.pkl')
     
     df_train = unpickle_object('pickled/train.pkl')
     df_test_both = unpickle_object('pickled/test_both.pkl')
@@ -150,9 +161,15 @@ if __name__ == "__main__":
     df_test_temporal = unpickle_object('pickled/test_temporal.pkl')
     df_att = unpickle_object('pickled/df_att.pkl')
 
+    basin_means = unpickle_object('pickled/basin_means.pkl')
+    basin_stds = unpickle_object('pickled/basin_stds.pkl')
+
+    q_mu = stats_dict['QObs(mm/d)']['mean']
+    q_sigma = stats_dict['QObs(mm/d)']['std']
+
     # Instantiate ConvCNP
     model = ConvCNP(in_channels = len(C.context_channels)-1,
-                    # rho=SimpleConv(in_channels=C.rho_in_channels),
+                    #rho=SimpleConv(in_channels=C.rho_in_channels),
                     # rho=UNet(in_channels=C.rho_in_channels),
                     rho=DepthSepConv1d(in_channels=C.rho_in_channels, conv_channels=64, num_layers=7, kernel_size=15),
                     points_per_unit=C.points_per_unit,
@@ -179,7 +196,7 @@ if __name__ == "__main__":
                             channels_t_val = C.target_val_channel,
                             context_mask = C.context_mask,
                             target_mask = C.target_mask,
-                            extrapolate = C.extrapolate_flag,
+                            extrapolate = True, #C.extrapolate_flag,
                             timeslice = C.timeslice,
                             dropout_rate = 0, #  0.3,
                             concat_static_features = C.concat_static_features,
@@ -188,6 +205,7 @@ if __name__ == "__main__":
                             max_train_points= C.max_train_points,
                             max_test_points= C.max_test_points,
                             device='cpu',
+                            return_basins=True
                             )
 
     # Create a fixed set of outputs to predict at when plotting.
@@ -205,14 +223,15 @@ if __name__ == "__main__":
                             channels_t_val = C.target_val_channel,
                             context_mask = C.context_mask,
                             target_mask = C.target_mask,
-                            extrapolate = False,
+                            extrapolate = True,
                             concat_static_features = C.concat_static_features,
                             timeslice = C.timeslice,
                             min_train_points = C.min_train_points,
                             min_test_points = C.min_test_points,
                             max_train_points = C.max_train_points,
                             max_test_points = C.max_test_points,
-                            device = 'cpu'
+                            device = 'cpu',
+                            return_basins=True
                             )
 
     # Instantiate data generator for validation.
@@ -227,21 +246,22 @@ if __name__ == "__main__":
                             channels_t_val = C.target_val_channel,
                             context_mask = C.context_mask,
                             target_mask = C.target_mask,
-                            extrapolate = False,
+                            extrapolate = True,
                             concat_static_features = C.concat_static_features,
                             timeslice = C.timeslice,
                             min_train_points = C.min_train_points,
                             min_test_points = C.min_test_points,
                             max_train_points = C.max_train_points,
                             max_test_points = C.max_test_points,
-                            device = 'cpu'
+                            device = 'cpu',
+                            return_basins=True
                         )
 
     # Experiment folder
     change_folder = True
 
     if change_folder:
-        experiment_name = 'forecasting_loggaussian'
+        experiment_name = 'forecasting_gaussian'
         wd = WorkingDirectory(generate_root(experiment_name))
 
     if flag_wandb:
@@ -258,23 +278,24 @@ if __name__ == "__main__":
     gen_val.batch_size = 32
     gen_test.batch_size = 32
 
-    gen_train.num_tasks = 128
+    gen_train.num_tasks = 64
     gen_val.num_tasks = 64
-    gen_test.num_tasks = 64
+    gen_test.num_tasks = 16
 
     gen_train.dropout_rate = 0
     gen_val.dropout_rate = 0
     gen_test.dropout_rate = 0
     static_masking_rate = 0
 
-    num_workers = 0
+    num_workers = 8
+    if debug_mode: num_workers = 0
 
     train_dataloader = DataLoader(dataset=gen_train, batch_size=1, num_workers=num_workers)
     test_dataloader = DataLoader(dataset=gen_test, batch_size=1, num_workers=num_workers)
     val_dataloader = DataLoader(dataset=gen_val, batch_size=1, num_workers=num_workers)
 
     # Some training hyper-parameters:
-    LEARNING_RATE = 5*1e-4
+    LEARNING_RATE = 1e-3
     NUM_EPOCHS = 200
     PLOT_FREQ = 1
 
@@ -296,7 +317,9 @@ if __name__ == "__main__":
                                      model = model, 
                                      opt = opt, 
                                      dist=dist, 
-                                     q_mu=q_mu, q_sigma=q_sigma)
+                                     q_mu=q_mu, 
+                                     q_sigma=q_sigma,
+                                     basin_stds=basin_stds,)
 
         # Log training loss to W&B
         if flag_wandb:
@@ -307,10 +330,13 @@ if __name__ == "__main__":
         train_obj_list.append(train_obj)
         train_nse_list.append(train_nse)
         
-        test_obj, test_nse = test(data = test_dataloader,
-                        model = model, 
-                        dist = dist, 
-                        q_mu=q_mu, q_sigma=q_sigma)
+        test_obj, test_nse = test(data = train_dataloader,
+                                model = model, 
+                                dist = dist, 
+                                q_mu=q_mu, 
+                                q_sigma=q_sigma,
+                                basin_stds=basin_stds,
+                                )
 
         # Log test loss to W&B
         if flag_wandb:

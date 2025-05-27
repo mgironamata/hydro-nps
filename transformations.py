@@ -138,3 +138,34 @@ def rev_lognormal(mu_log, sigma_log, e):
     Var = (E**2)*(torch.exp(sigma_log**2)-1)
     return E, torch.sqrt(Var)
 
+def scale_dataframe(df, columns, stats_dict=None):
+    """
+    Standardize the given DataFrame by column and return the scaled DataFrame and statistics.
+    
+    Parameters:
+    df (pd.DataFrame): The DataFrame to be standardized.
+    stats_dict (dict, optional): A dictionary containing the mean and standard deviation of each column.
+                                 If provided, these statistics will be used to scale the DataFrame.
+                                 If not provided, statistics will be computed from the given DataFrame.
+    
+    Returns:
+    scaled_df (pd.DataFrame): The standardized DataFrame.
+    stats_dict (dict): A dictionary containing the mean and standard deviation of each column.
+    """
+    if stats_dict is None:
+        stats_dict = {}
+        for column in columns:
+            mean = df[column].mean()
+            std = df[column].std()
+            stats_dict[column] = {'mean': mean, 'std': std}
+            df[column] = (df[column] - mean) / std
+    else:
+        for column in columns:
+            if column in stats_dict:
+                mean = stats_dict[column]['mean']
+                std = stats_dict[column]['std']
+                df[column] = (df[column] - mean) / std
+            else:
+                raise ValueError(f"Statistics for column '{column}' not found in stats_dict")
+
+    return df, stats_dict
