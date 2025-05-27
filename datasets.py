@@ -43,7 +43,8 @@ class HydroDataset(Dataset):
                 min_test_points = 10,
                 max_train_points=15,
                 max_test_points=15,
-                return_basins=False):     
+                return_basins=False,
+                ):     
 
         self.dataframe = dataframe
         self.df_att = df_att
@@ -80,7 +81,7 @@ class HydroDataset(Dataset):
         return np.vstack(tuple(self.df_att[key][self.df_att['gauge_id']==int(basin)] for key in self.channels_att))
 
     def sample_date(self,x,df):
-        return np.vstack(tuple(df[key][x] for key in ['YR','DOY']))
+        return np.vstack(tuple(df[key][x] for key in ['Year','DOY']))
 
     def __getitem__(self,index=0):
         task = {'x': [],
@@ -105,7 +106,8 @@ class HydroDataset(Dataset):
 
         for i in range(self.batch_size):
         # Sample inputs and outputs.
-                
+            s_ind, e_ind = randoms[i], randoms[i] + self.timeslice
+            
             e_ind_b = self.dataframe.index[self.dataframe['basin']==basins[i]][-1]
             
             if e_ind > e_ind_b:
@@ -155,6 +157,7 @@ class HydroDataset(Dataset):
                          embedding=False, concat_static_features=self.concat_static_features, observe_at_target=True, device=self.device)
 
         if self.return_basins:
+            # basins = [tuple[0] for tuple in basins]
             return task, basins
         else:
             return task
@@ -205,11 +208,16 @@ class HydroTestDataset(Dataset):
         self.min_test_points = min_test_points
         self.max_train_points = max_train_points
         self.max_test_points = max_test_points
+        #self.calculate_DOY()
 
         self.year_basin_pairs = list(self._get_basin_years())
 
+    def calculate_DOY(self):
+        self.dataframe['DOY'] = self.dataframe.apply(lambda x: pd.Timestamp(year=x['Year'], month=x['Mnth'], day=x['Day']).dayofyear, axis=1)
+
+
     def _get_basin_years(self):
-        grouped = self.dataframe.groupby(['basin','YR'])
+        grouped = self.dataframe.groupby(['basin','Year'])
         return grouped.groups.keys()
 
     def __len__(self):
@@ -222,10 +230,10 @@ class HydroTestDataset(Dataset):
         return o1, o2, o3
     
     def sample_att(self,basin):
-        return np.vstack(tuple(self.df_att[key][self.df_att['basin']==basin] for key in self.channels_att))
+         return np.vstack(tuple(self.df_att[key][self.df_att['gauge_id']==int(basin)] for key in self.channels_att))
 
     def sample_date(self,x,df):
-        return np.vstack(tuple(df[key][x] for key in ['YR','DOY']))
+        return np.vstack(tuple(df[key][x] for key in ['Year','DOY']))
 
     def __getitem__(self,idx=0):
 
@@ -273,14 +281,17 @@ class HydroTestDataset(Dataset):
 
         # self.batch_size = len(df) - self.timeslice 
         # basin = df['basin'].unique()[0]
+        
+        basins = []
 
         for idx in idxs:
 
             basin, year = self.year_basin_pairs[idx]
+            basins.append(basin)
 
             df = self.dataframe[(self.dataframe['basin']==basin)].drop_duplicates().reset_index(drop=True)  
 
-            if len(df) != 5478:
+            if len(df) != 5479:
                 continue
 
             # Sample inputs and outputs.
@@ -359,7 +370,7 @@ class HydroTestDataset(Dataset):
                          observe_at_target=True,
                          device=self.device)
 
-        return task
+        return task, basins
 
 
 if __name__ == "__main__":
@@ -369,29 +380,42 @@ if __name__ == "__main__":
     from torch.utils.data import DataLoader
     import time
 
-    df = pd.read_pickle('pickled/train.pkl')
-    df_att = pd.read_pickle('pickled/df_att.pkl')
+    print("Testing HydroDataset")
 
-    dataset = HydroDataset(dataframe=df,
-                            df_att=df_att,
+    df_att = pd.read_pickle('pickled/df_att.pkl')
+    print("df_att loaded")
+
+    df = pd.read_pickle('pickled/test_both.pkl')
+    print("df loaded")
+    
+
+    gen_test = HydroTestDataset(dataframe=df,
+                            df_att = df_att,
+                            batch_size = 16,
+                            num_tasks = 128,
                             channels_c = C.context_channels,
                             channels_t = C.target_channels,
                             channels_att = C.attributes,
                             channels_t_val = C.target_val_channel,
                             context_mask = C.context_mask,
                             target_mask = C.target_mask,
-                            extrapolate=True,
-                            timeslice=C.timeslice,
-                            dropout_rate=0,
+                            extrapolate = True,
                             concat_static_features = C.concat_static_features,
-                            min_train_points= C.min_train_points,
-                            min_test_points= C.min_test_points,
-                            max_train_points= C.max_train_points,
-                            max_test_points= C.max_test_points)
+                            timeslice = C.timeslice,
+                            min_train_points = C.min_train_points,
+                            min_test_points = C.min_test_points,
+                            max_train_points = C.max_train_points,
+                            max_test_points = C.max_test_points,
+                            device = 'cpu',
+                            )
     
-    dataset.__getitem__(0)
+    s = time.time()
+    print(len(gen_test))
+    gen_test.__getitem__(0)
+    e = time.time()
+    print(f"Elapsed time: {e-s:.2f} s")
 
-    dataloader = DataLoader(dataset, batch_size=1, num_workers=0)
+    dataloader = DataLoader(gen_test, batch_size=1, num_workers=0)
             
     start = time.time()
     for idx, batch in enumerate(dataloader):
